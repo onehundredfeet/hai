@@ -1,5 +1,6 @@
 package sm.macro;
 
+import tink.macro.Ops.Binary;
 import tink.macro.Exprs.VarDecl;
 import haxe.macro.MacroStringTools;
 import tink.macro.Ops.Unary;
@@ -12,6 +13,7 @@ import haxe.macro.Context;
 import haxe.macro.Expr;
 import tink.macro.Member;
 import sm.tools.StateXMLTools;
+import sm.tools.MacroTools;
 
 using tink.MacroApi;
 
@@ -29,8 +31,8 @@ class StateMachineBuilder {
 		return newField;
 	}
 
-    static function makeMemberFunction(n:String, f:Function) : Field {
-        var func = {
+	static function makeMemberFunction(n:String, f:Function):Field {
+		var func = {
 			name: n,
 			doc: null,
 			meta: [],
@@ -38,9 +40,8 @@ class StateMachineBuilder {
 			kind: FFun(f),
 			pos: Context.currentPos()
 		};
-        return func;
-    }
-
+		return func;
+	}
 
 	static function buildConstants(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		for (ss in model.stateShapes) {
@@ -58,90 +59,33 @@ class StateMachineBuilder {
 		}
 	}
 
-    static function buildVars(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
-        var count = 0;
-        for(ds in model.defaultStates) {
-            var stateField = {
-                name: "_state" + count,
-                doc: null,
-                meta: [],
-                access: [APrivate],
-                kind: FVar(macro:Int, Exprs.at(EConst(CIdent("S_" + ds)))),
-                pos: Context.currentPos()
-            };
-    
-            cb.addMember(stateField);
-        }
-        
-      
+	static function buildVars(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+		var count = 0;
+		for (ds in model.defaultStates) {
+			var stateField = {
+				name: "_state" + count,
+				doc: null,
+				meta: [],
+				access: [APrivate],
+				kind: FVar(macro:Int, Exprs.at(EConst(CIdent("S_" + ds)))),
+				pos: Context.currentPos()
+			};
+
+			cb.addMember(stateField);
+		}
 	}
 
-	/*
-		public static Dictionary<string, StateMachineGraph> WriteStateMachineClass(TextTransformation @this, string path, bool reactive = false) {
-			var stateMachines = new Dictionary<string, StateMachineGraph>();
-			var machinesDoc = Thor.Tools.CodeGeneration.XML.StringToXMLDocument(File.ReadAllText(path), e => { });
-
-			var pages = Import.GetPages(machinesDoc.DocumentElement);
-
-			foreach (var page in pages) {
-				var stateMachine = new StateMachineGraph(page);
-
-				stateMachines[stateMachine.Name.ToUpper()] = stateMachine;
-
-				var className = stateMachine.ClassName;
-
-				if (reactive) {
-					@this.WriteLine("public  class " + className + "  : AObservableStateMachine<" + className + ".EState, " + className + ".ETrigger> {");
-				}
-				else {
-					@this.WriteLine("public  class " + className + "  : AStateMachine<" + className + ".EState, " + className + ".ETrigger> {");
-				}
-				@this.PushIndent("\t");
-				@this.WriteLine(" public " + className + "() : base(EState." + stateMachine.DefaultState + ") {");
-				
-				@this.WriteLine("}");
-				
-				StateMachines.WriteEnumDefinition(@this, stateMachine.StateNames, stateMachine.TransitionNames);
-
-				WriteOverlayInterface(@this, stateMachine);
-				
-				
-				if (reactive) {
-					foreach (var s in stateMachine.StateNames) {
-						@this.WriteLine("\t\tpublic System.IObservable<EState> Enter" + s +
-										" => EnterState.Observe.Where( x => x  == EState." + s + ");");
-						@this.WriteLine("\t\tpublic System.IObservable<(EState,ETrigger)> Enter" + s +
-										"By => EnterStateBy.Observe.Where( x => x.Item1  == EState." + s + ");");
-						@this.WriteLine("\t\tpublic System.IObservable<EState> Exit" + s +
-										" => ExitState.Observe.Where( x => x  == EState." + s + ");");
-						@this.WriteLine("\t\tpublic System.IObservable<(EState,ETrigger)> Exit" + s +
-										"By => EnterStateBy.Observe.Where( x => x.Item1  == EState." + s + ");");
-					}
-				}
-
-				WriteFire(@this, stateMachine);
-				WriteIsInFunction(@this, stateMachine.StateShapes);
-				WriteFireStrFunction(@this, stateMachine);
-				@this.PopIndent();
-				@this.WriteLine("}");
-			}
-
-		   
-
-			return stateMachines;
-		}
-	 */
 	static function buildOverlayInterface(model:StateMachineModel) {}
 
 	static function exprConstString(s:String) {
 		return Exprs.at(EConst(CString(s)));
 	}
 
-    static function exprID(s:String) {
+	static function exprID(s:String) {
 		return Exprs.at(EConst(CIdent(s)));
 	}
 
-    static function exprCall(method:String, ?params : Array<Expr>) {
+	static function exprCall(method:String, ?params:Array<Expr>) {
 		return Exprs.call(Exprs.at(EConst(CIdent(method))), params);
 	}
 
@@ -159,12 +103,11 @@ class StateMachineBuilder {
 			if (content == null)
 				continue;
 
-
 			var triggers = new Map<String, Bool>();
 			var currentElement = s;
 
-            var triggerCases = new Array<Case>();
-            
+			var triggerCases = new Array<Case>();
+
 			while (s != null && (isStateShape(s) || isGroupNode(s))) {
 				var parent = s.parent.parent;
 				if (isGroupProxy(s)) {
@@ -173,79 +116,77 @@ class StateMachineBuilder {
 				}
 				trace('Walking ${getStateShapeName(s)} [${getStateShapeName(parent)}] ');
 				model.graph.walkOutgoingConnections(s, x -> trace('Missing transition information on ${x}'), (trigger, targetState) -> {
-
-                    var sourceStateName = getStateShapeName(s);
-                    var targetStateName = getStateShapeName(targetState);
+					var sourceStateName = getStateShapeName(s);
+					var targetStateName = getStateShapeName(targetState);
 					trace('Walk: ${sourceStateName} by ${trigger} -> ${targetStateName}');
 					if (triggers.exists(trigger)) {
 						throw "Overlapping triggers " + trigger;
 					}
 
-                    var blockArray = new Array<Expr>();
-                    
-                    var exited = new Array<String>();
-                    exited.push(sourceStateName);
-                    blockArray.push(exprCall("onExit" + sourceStateName, [exprID("trigger")]));
+					var blockArray = new Array<Expr>();
 
-                    var leafState = getInitialLeaf(targetState);
-				    var leafStateName = getStateShapeName(leafState);
+					var exited = new Array<String>();
+					exited.push(sourceStateName);
+					blockArray.push(exprCall("onExit" + sourceStateName, [exprID("trigger")]));
 
-                    var commonRoot = firstCommonAncestor(s, leafState);
-                    var parent = getParentGroup(s);
+					var leafState = getInitialLeaf(targetState);
+					var leafStateName = getStateShapeName(leafState);
 
-                    trace('Parent: ${ getStateShapeName(parent)}');
-                    while (parent != commonRoot && parent != null) {
-                        var pName = getStateShapeName(parent);
-                        blockArray.push(exprCall("onExit" + pName, [exprID("trigger")]));
-                        exited.push(pName);
-                        parent = getParentGroup(parent);
-                    }
+					var commonRoot = firstCommonAncestor(s, leafState);
+					var parent = getParentGroup(s);
 
-                    var walkList = new Array<Xml>();
+					trace('Parent: ${getStateShapeName(parent)}');
+					while (parent != commonRoot && parent != null) {
+						var pName = getStateShapeName(parent);
+						blockArray.push(exprCall("onExit" + pName, [exprID("trigger")]));
+						exited.push(pName);
+						parent = getParentGroup(parent);
+					}
 
-                    parent = getParentGroup(leafState);
-                    while (parent != commonRoot && parent != null) {
-                        walkList.push(parent);
-                        parent = getParentGroup(parent);
-                    }
+					var walkList = new Array<Xml>();
 
-                    walkList.reverse();
+					parent = getParentGroup(leafState);
+					while (parent != commonRoot && parent != null) {
+						walkList.push(parent);
+						parent = getParentGroup(parent);
+					}
 
-                    for ( targetAncestor in walkList) {
-                        for ( exit in exited) {
-                            blockArray.push(exprCall("onEnterFrom" + getStateShapeName(targetAncestor), [exprID("S_" + exit)]));
-                        }
-                        blockArray.push(exprCall("onEnterBy" + getStateShapeName(targetAncestor), [exprID("T_" + trigger)]));
-                    }
-                    // TBD Support multiple machines
-                    blockArray.push(Exprs.assign(exprID("_state0"), exprID("S_" + leafStateName)));
+					walkList.reverse();
 
-                    for ( exit in exited) {
-                        blockArray.push(exprCall("onEnterFrom" + leafStateName, [exprID("S_" + exit)]));
-                    }
+					for (targetAncestor in walkList) {
+						for (exit in exited) {
+							blockArray.push(exprCall("onEnterFrom" + getStateShapeName(targetAncestor), [exprID("S_" + exit)]));
+						}
+						blockArray.push(exprCall("onEnterBy" + getStateShapeName(targetAncestor), [exprID("T_" + trigger)]));
+					}
+					// TBD Support multiple machines
+					blockArray.push(Exprs.assign(exprID("_state0"), exprID("S_" + leafStateName)));
 
-                    blockArray.push(exprCall("onEnterBy" + leafStateName, [exprID("T_" + trigger)]));
-                    var tc:Case = {values: [Exprs.at(EConst(CIdent("T_" + trigger)))], expr: Exprs.toBlock(blockArray)};
-                    triggerCases.push(tc);
-				
+					for (exit in exited) {
+						blockArray.push(exprCall("onEnterFrom" + leafStateName, [exprID("S_" + exit)]));
+					}
+
+					blockArray.push(exprCall("onEnterBy" + leafStateName, [exprID("T_" + trigger)]));
+					var tc:Case = {values: [Exprs.at(EConst(CIdent("T_" + trigger)))], expr: Exprs.toBlock(blockArray)};
+					triggerCases.push(tc);
 				});
 				s = parent;
 			}
 
-            var triggerSwitch =  Exprs.at(ESwitch(Exprs.at(EConst(CIdent("trigger"))), triggerCases, null));
+			var triggerSwitch = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("trigger"))), triggerCases, null));
 
-            var stateCasec:Case = {values: [Exprs.at(EConst(CIdent("S_" + content)))], expr: triggerSwitch};
+			var stateCasec:Case = {values: [Exprs.at(EConst(CIdent("S_" + content)))], expr: triggerSwitch};
 			stateCases.push(stateCasec);
 		}
 
-        var switches = new Array<Expr>();
+		var switches = new Array<Expr>();
 
-        for( i in 0...model.defaultStates.length) {
-            var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state" + i))), stateCases, Exprs.at(EThrow(Exprs.at(EConst(CString("State not found")))))));
-            switches.push(sw);
-        }
+		for (i in 0...model.defaultStates.length) {
+			var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state" + i))), stateCases, Exprs.at(EThrow(Exprs.at(EConst(CString("State not found")))))));
+			switches.push(sw);
+		}
 
-        var blk = Exprs.at(EBlock(switches));
+		var blk = Exprs.at(EBlock(switches));
 		var arg:FunctionArg = {name: "trigger", type: macro:Int};
 		var fun:Function = {args: [arg], expr: blk};
 
@@ -258,148 +199,56 @@ class StateMachineBuilder {
 			pos: Context.currentPos()
 		};
 
-		//var pp = new Printer();
-		//trace(pp.printField(fireFunc));
-
-
-		/*
-
-			if (stateMachine.ReEntrant) {
-				@this.WriteLine("bool _inTransition = false;");
-				@this.WriteLine("Queue<ETrigger> _triggerQueue = new ();");
-			}
-
-			@this.WriteLine("public void Fire( ETrigger trigger) {"); 
-			@this.PushIndent("\t"); 
-			if (stateMachine.ReEntrant) {
-				@this.WriteLine("if (_inTransition) {");
-				@this.PushIndent("\t");
-				@this.WriteLine("_triggerQueue.Enqueue(trigger);");
-				@this.WriteLine("return;");
-				@this.PopIndent();
-				@this.WriteLine("}");
-
-				@this.WriteLine("_inTransition = true;");
-			}
-			@this.WriteLine(" switch(_state) {");
-			foreach (var s in stateMachine.StateShapes) {
-				var element = s;
-				if (element.IsGroupNode() || element.IsGroupProxy()) continue;
-				var content = element.GetStateShapeName();
-				if (content == null) continue;
-
-				@this.WriteLine("\t\t\tcase EState." + content + ":");
-				@this.WriteLine("\t\t\t\tswitch(trigger) {");
-
-
-				HashSet<string> triggers = new HashSet<string>();
-
-
-				var currentElement = element;
-
-				while (element != null && (element.IsStateShape() || element.IsGroupNode())) {
-					var parent = element.GetParentGroup();
-					if (element.IsGroupProxy()) {
-						element = parent;
-						parent = element.GetParentGroup();
-					}
-
-
-					stateMachine.Graph.WalkOutgoingConnections(element,
-						x => { @this.WriteLine("#Error missing transition information on " + x); },
-						(trigger, state) => {
-
-							if (triggers.Contains(trigger)) {
-								@this.WriteLine("Overlapping triggers " + trigger);
-								throw new FormatException("Overlapping triggers " + trigger);
-							}
-							else {
-								@this.WriteLine("\t\t\t\tcase ETrigger." + trigger + ": {");
-
-								List<string> exited = new List<string>();
-								
-								@this.WriteLine("\t\t\t\t\tOnExit" + currentElement.GetStateShapeName() + "( ETrigger." +
-												trigger + ");");
-								exited.Add( currentElement.GetStateShapeName() );
-								// Need to walk up the hierarchy
-								//WriteLine("\t\t\t\t\tExitStateBy.OnNext( (EState." + currentElement.GetStateShapeName() +", trigger));");
-								//WriteLine("\t\t\t\t\tExitState.OnNext( EState." + currentElement.GetStateShapeName() +"  );");
-
-								var leafState = state.GetInitialLeaf();
-								var leafStateName = leafState.GetStateShapeName();
-
-								var commonRoot = currentElement.FirstCommonAncestor(leafState);
-
-								var parent = currentElement.GetParentGroup();
-								while (parent != commonRoot && parent != null) {
-									@this.WriteLine("\t\t\t\t\tOnExit" + parent.GetStateShapeName() +
-													"( ETrigger." +
-													trigger + ");");
-									exited.Add(parent.GetStateShapeName());
-			//                                    WriteLine("\t\t\t\t\tExitStateBy.OnNext( (EState." + parent.GetStateShapeName() +", trigger));");
-			//                                  WriteLine("\t\t\t\t\tExitState.OnNext( EState." + parent.GetStateShapeName() + ");");
-									parent = parent.GetParentGroup();
-								}
-
-								var walkList = new List<IElement>();
-
-								parent = leafState.GetParentGroup();
-								while (parent != commonRoot && parent != null) {
-									walkList.Add(parent);
-									parent = parent.GetParentGroup();
-								}
-
-								foreach (var targetAncestor in (walkList as IEnumerable<IElement>).Reverse()) {
-									foreach (var exit in exited) {
-										@this.WriteLine("\t\t\t\t\tOnEnter" + targetAncestor.GetStateShapeName() + " ( EState." + exit + ");");
-									}
-									@this.WriteLine("\t\t\t\t\tOnEnter" + targetAncestor.GetStateShapeName() + " ( ETrigger." + trigger + ");");
-			//                                    WriteLine("\t\t\t\t\tEnterStateBy.OnNext( (EState." +targetAncestor.GetStateShapeName() + ", trigger));");
-			//                                    WriteLine("\t\t\t\t\tEnterState.OnNext( EState." + targetAncestor.GetStateShapeName() +    ");");
-								}
-
-								@this.WriteLine("\t\t\t\t\t_state = EState." + leafStateName + "; ");
-								foreach (var exit in exited) {
-									@this.WriteLine("\t\t\t\t\tOnEnter" + leafStateName + "( EState." + exit + ");");
-								}
-
-								@this.WriteLine("\t\t\t\t\tOnEnter" + leafStateName + "( ETrigger." + trigger + ");");
-
-								//WriteLine("\t\t\t\t\tEnterStateBy.OnNext( (EState." + leafStateName + ", trigger));");
-								//WriteLine("\t\t\t\t\tEnterState.OnNext( EState." + leafStateName + ");");
-
-								@this.WriteLine("\t\t\t\tbreak;}");
-							}
-
-						});
-					element = parent;
-				}
-
-
-				@this.WriteLine("\t\t\t\t}");
-				@this.WriteLine("\t\t\t\tbreak;");
-
-			}
-
-			@this.PopIndent();
-			@this.WriteLine("}");
-			if (stateMachine.ReEntrant) {
-				@this.WriteLine("_inTransition = false;");
-				@this.WriteLine("if (_triggerQueue.Count > 0){");
-				@this.PushIndent("\t");
-				@this.WriteLine("Fire(_triggerQueue.Dequeue());");
-				@this.PopIndent();
-				@this.WriteLine("}");
-			}
-
-			@this.PopIndent();
-			@this.WriteLine("}");
-		 */
-
-         cb.addMember(fireFunc);
+		cb.addMember(fireFunc);
 	}
 
-	static function buildIsInFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {}
+	static function buildIsInFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+		var blockArray = new Array<Expr>();
+
+		blockArray.push(exprIf(exprEq(exprID("_state0"), exprID("state")), macro true));
+
+		var cases = new Array<Case>();
+
+		for (s in model.stateShapes) {
+			if (isGroupNode(s) || isGroupProxy(s))
+				continue;
+			var content = getStateShapeName(s);
+			if (content == null)
+				continue;
+
+			var parent = getParentGroup(s);
+			if (parent == null || isEmpty(getStateShapeName(parent)))
+				continue;
+
+			var subcases = new Array<Case>();
+
+			while (parent != null && isGroupNode(parent)) {
+				var c:Case = {values: [exprID("S_" + getStateShapeName(parent))], expr: macro return true};
+				subcases.push(c);
+
+				parent = getParentGroup(parent);
+			}
+
+			var theCase:Case = {values: [Exprs.at(EConst(CIdent("S_" + getStateShapeName(s))))], expr: Exprs.at(ESwitch(exprID("state"), subcases, null))};
+			cases.push(theCase);
+		}
+
+		var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state0"))), cases, Exprs.at(EThrow(Exprs.at(EConst(CString("State not found")))))));
+
+		blockArray.push(sw);
+		blockArray.push(macro return false);
+
+		cb.addMember({
+			name: "isIn",
+			doc: null,
+			meta: [],
+			access: [APublic],
+			kind: FFun({args: [{name: "state", type: macro:Int}], expr: Exprs.at(EBlock(blockArray))}),
+			pos: Context.currentPos()
+		});
+
+	
+	}
 
 	static function buildFireStrFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		var cases = new Array<Case>();
@@ -423,17 +272,112 @@ class StateMachineBuilder {
 			pos: Context.currentPos()
 		};
 
-        cb.addMember(fireFunc);
+		cb.addMember(fireFunc);
 	}
 
-    static public function buildEventFunctions(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
-        for ( s in model.stateNames) {
-            
-            cb.addMember(makeMemberFunction( "onEnterBy" + s, Functions.func( Exprs.toBlock([]), [Functions.toArg("trigger", macro : Int)] ) ));
-            cb.addMember(makeMemberFunction( "onExit" + s, Functions.func( Exprs.toBlock([]), [Functions.toArg("trigger", macro : Int)] ) ));
-            cb.addMember(makeMemberFunction( "onEnterFrom" + s, Functions.func( Exprs.toBlock([]), [Functions.toArg("state", macro : Int)] ) ));
+	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+		for (s in model.stateNames) {
+			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock([]), [Functions.toArg("trigger", macro:Int)])));
+			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock([]), [Functions.toArg("trigger", macro:Int)])));
+			cb.addMember(makeMemberFunction("onEnterFrom" + s, Functions.func(Exprs.toBlock([]), [Functions.toArg("state", macro:Int)])));
 
-            /*
+			/*
+					@this.WriteLine( "[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+					@this.WriteLine( "void OnEnter"+ s + "( ETrigger trigger) {");
+					@this.PushIndent("\t");
+					@this.WriteLine( "for (var i = 0; i < _listeners.Count; i++) {");
+					@this.PushIndent("\t");
+					@this.WriteLine( "_listeners[i].OnEnter"+ s +" ( trigger);");
+					@this.PopIndent();
+					@this.WriteLine("}");
+					@this.PopIndent();
+					@this.PushIndent("\t");
+					@this.PopIndent();
+					@this.WriteLine("}");
+					@this.WriteLine( "[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+					@this.WriteLine( "void OnEnter"+ s + "( EState state){");
+					@this.PushIndent("\t");
+					@this.WriteLine( "for (var i = 0; i < _listeners.Count; i++) {");
+					@this.PushIndent("\t");
+					@this.WriteLine( "_listeners[i].OnEnter"+ s +" ( state);");
+					@this.PopIndent();
+					@this.WriteLine("}");
+					@this.PopIndent();
+					@this.WriteLine("}");
+					@this.WriteLine( "[MethodImpl(MethodImplOptions.AggressiveInlining)]");
+					@this.WriteLine( "void OnExit"+ s + "( ETrigger trigger) {");
+					@this.PushIndent("\t");
+					@this.WriteLine( "for (var i = 0; i < _listeners.Count; i++) {");
+					@this.PushIndent("\t");
+					@this.WriteLine( "_listeners[i].OnExit"+ s +" ( trigger);");
+					@this.PopIndent();
+					@this.WriteLine("}");
+					@this.PopIndent();
+					@this.WriteLine("}");
+				}
+			 */
+		}
+	}
+ 
+    static var _machines = new Map<String, StateMachineModel>();
+    
+    static function getMachine( path:String, machine:String ) : StateMachineModel {
+        var key = path + "_" + machine;
+        var m = _machines.get(key);
+
+        if (m == null) {
+            var smArray = Visio.read(path);
+            for(sm in smArray) {
+                var key = path + "_" + sm.name;
+                _machines[key] = sm;
+            }
+        }
+        m = _machines.get(key);
+        if (m==null) {
+            throw 'No machine ${machine} found in ${path}';
+        }
+        return m;
+    }
+    static var _printer = new Printer();
+
+    static public function buildInterface( path:String, machine:String) {
+        var model = getMachine( path, machine );
+
+        var cb = new tink.macro.ClassBuilder();
+
+        var moduleName = Context.getLocalModule();
+
+        Context.defineType({pack:Context.getLocalClass().get().pack,name:"I" + Context.getLocalClass().get().name + "Listener", pos:Context.currentPos(), kind:TDClass( null, null, true ), fields : [] });
+
+        /*
+ @this.WriteLine("public interface IOverlay : IStateMachineOverlay {");
+        @this.PushIndent("\t");
+        foreach (var s in stateMachine.StateNames) {
+            @this.WriteLine( "void OnEnter"+ s + "( ETrigger trigger);");
+            @this.WriteLine( "void OnEnter"+ s + "( EState state);");
+            @this.WriteLine( "void OnExit"+ s + "( ETrigger trigger);");
+        }
+
+        @this.PopIndent();
+        @this.WriteLine("}");
+        
+        @this.WriteLine( "List<IOverlay> _listeners = new List<IOverlay>();");
+        @this.WriteLine( "public override void Listen(IStateMachineOverlay listen){");
+        @this.PushIndent("\t");
+        @this.WriteLine( "var l = listen as IOverlay;");
+        @this.WriteLine( "switch(_state) {");
+        @this.PushIndent("\t");
+        foreach (var s in stateMachine.StateNames) {
+            @this.WriteLine("case EState." + s +": l.OnEnter" + s + "( ETrigger.NONE); break;");
+        }
+
+        @this.PopIndent();
+        @this.WriteLine("}");
+        @this.WriteLine( "_listeners.Add(l);");
+        @this.PopIndent();
+        @this.WriteLine("}");
+        foreach (var s in stateMachine.StateNames) {
+            
             @this.WriteLine( "[MethodImpl(MethodImplOptions.AggressiveInlining)]");
             @this.WriteLine( "void OnEnter"+ s + "( ETrigger trigger) {");
             @this.PushIndent("\t");
@@ -468,41 +412,38 @@ class StateMachineBuilder {
             @this.WriteLine("}");
         }
         */
-        }
-    }
-	macro static public function build(path:String, machine:String):Array<Field> {
-		var smArray = Visio.read(path);
+        var xx = cb.export(false);
 
-		var model:StateMachineModel = null;
-		for (sm in smArray) {
-			if (sm.name == machine) {
-				model = sm;
-				break;
-			}
+		for (x in xx) {
+			trace(_printer.printField(x));
 		}
-		if (model == null) {
-			throw "No machine found";
-		}
+		return xx;
+    }
+
+	macro static public function build(path:String, machine:String, makeInterface : Bool):Array<Field> {
+		var model = getMachine( path, machine );
+
 		var cb = new tink.macro.ClassBuilder();
 
 		buildConstants(cb, model);
-        buildVars(cb, model);
+		buildVars(cb, model);
 
 		buildOverlayInterface(model);
-        buildEventFunctions(cb,model);
+		buildEventFunctions(cb, model);
 		buildFireFunction(cb, model);
 		buildIsInFunction(cb, model);
 		buildFireStrFunction(cb, model);
 
+        if (makeInterface) {
+            buildInterface(path, machine);
+        }
 		var xx = cb.export(false);
 
-        var pp = new Printer();
-		
 
-        for( x in xx) {
-            trace(pp.printField(x));
-        }
-        return xx;
+		for (x in xx) {
+			trace(_printer.printField(x));
+		}
+		return xx;
 	}
 }
 #end
