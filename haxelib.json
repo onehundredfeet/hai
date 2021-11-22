@@ -1,0 +1,11 @@
+{
+  "name": "hsme",
+  "url" : "https://github.com/onehundredfeet/hsme",
+  "license": "MIT",
+  "tags": [ "statemachine", "state", "haxe", "ai" ],
+  "description": "State machine engine for Haxe",
+  "version": "0.1.0",
+  "classPath": "src/",
+  "releasenote": "",
+  "contributors": [ "onehundredfeet" ]
+}

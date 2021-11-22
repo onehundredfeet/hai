@@ -1,0 +1,6 @@
+*.hxproj
+/.vscode
+*.map
+/bin
+dump
+.DS_Store
