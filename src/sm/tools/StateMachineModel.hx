@@ -66,7 +66,6 @@ class StateMachineModel {
     function buildGraph() {
         _graph = new GraphModel();
    
-        trace("builidng graph");
         for ( shape in _allShapes) {
             var id = getShapeID(shape);
             if (isNotEmpty(id)) {

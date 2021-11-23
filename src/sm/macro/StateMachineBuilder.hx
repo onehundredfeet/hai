@@ -1,5 +1,6 @@
 package sm.macro;
 
+import haxe.macro.ComplexTypeTools;
 import tink.macro.Ops.Binary;
 import tink.macro.Exprs.VarDecl;
 import haxe.macro.MacroStringTools;
@@ -73,6 +74,18 @@ class StateMachineBuilder {
 
 			cb.addMember(stateField);
 		}
+
+		var ct = tink.macro.Types.asComplexType(getInterfaceName());
+		var listeneners = {
+			name: "_listeners",
+			doc: null,
+			meta: [],
+			access: [APrivate],
+			kind: FVar(Types.asComplexType("Array",[TPType(ct)] ), Exprs.at(ENew(Types.asTypePath("Array",[TPType(ct)] ), []))),
+			pos: Context.currentPos()
+		};
+
+		cb.addMember(listeneners);
 	}
 
 	static function buildOverlayInterface(model:StateMachineModel) {}
@@ -92,14 +105,10 @@ class StateMachineBuilder {
 	static function buildFireFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		var stateCases = new Array<Case>();
 
-		trace("Building fire");
-
 		for (s in model.stateShapes) {
-			trace('Trying ${s.nodeName}');
 			if (isGroupNode(s) || isGroupProxy(s))
 				continue;
 			var content = getStateShapeName(s);
-			trace('Named ${content}');
 			if (content == null)
 				continue;
 
@@ -114,11 +123,9 @@ class StateMachineBuilder {
 					s = parent;
 					parent = getParentGroup(s);
 				}
-				trace('Walking ${getStateShapeName(s)} [${getStateShapeName(parent)}] ');
 				model.graph.walkOutgoingConnections(s, x -> trace('Missing transition information on ${x}'), (trigger, targetState) -> {
 					var sourceStateName = getStateShapeName(s);
 					var targetStateName = getStateShapeName(targetState);
-					trace('Walk: ${sourceStateName} by ${trigger} -> ${targetStateName}');
 					if (triggers.exists(trigger)) {
 						throw "Overlapping triggers " + trigger;
 					}
@@ -135,7 +142,6 @@ class StateMachineBuilder {
 					var commonRoot = firstCommonAncestor(s, leafState);
 					var parent = getParentGroup(s);
 
-					trace('Parent: ${getStateShapeName(parent)}');
 					while (parent != commonRoot && parent != null) {
 						var pName = getStateShapeName(parent);
 						blockArray.push(exprCall("onExit" + pName, [exprID("trigger")]));
@@ -246,8 +252,6 @@ class StateMachineBuilder {
 			kind: FFun({args: [{name: "state", type: macro:Int}], expr: Exprs.at(EBlock(blockArray))}),
 			pos: Context.currentPos()
 		});
-
-	
 	}
 
 	static function buildFireStrFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
@@ -275,10 +279,26 @@ class StateMachineBuilder {
 		cb.addMember(fireFunc);
 	}
 
+	static function exprFor(ivar:Expr, len:Expr, expr:Expr) {
+		return macro for ($ivar in 0...$len) $expr;
+	}
+
 	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		for (s in model.stateNames) {
-			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock([]), [Functions.toArg("trigger", macro:Int)])));
-			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock([]), [Functions.toArg("trigger", macro:Int)])));
+			var enterByName = exprID("onEnterBy" + s);
+			var index = macro _listeners[i];
+			
+			var call = Exprs.at(EField(index, "onEnterBy" + s));
+			var enterByExpr = exprFor(macro i, macro _listeners.length,  macro $call (trigger));
+
+			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock([enterByExpr]), [Functions.toArg("trigger", macro:Int)])));
+
+			call = Exprs.at(EField(index, "onExit" + s));
+			enterByExpr = exprFor(macro i, macro _listeners.length,  macro $call (trigger));
+			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock([enterByExpr]), [Functions.toArg("trigger", macro:Int)])));
+
+			call = Exprs.at(EField(index, "onEnterFrom" + s));
+			enterByExpr = exprFor(macro i, macro _listeners.length,  macro $call (state));
 			cb.addMember(makeMemberFunction("onEnterFrom" + s, Functions.func(Exprs.toBlock([]), [Functions.toArg("state", macro:Int)])));
 
 			/*
@@ -318,110 +338,67 @@ class StateMachineBuilder {
 			 */
 		}
 	}
- 
-    static var _machines = new Map<String, StateMachineModel>();
-    
-    static function getMachine( path:String, machine:String ) : StateMachineModel {
-        var key = path + "_" + machine;
-        var m = _machines.get(key);
 
-        if (m == null) {
-            var smArray = Visio.read(path);
-            for(sm in smArray) {
-                var key = path + "_" + sm.name;
-                _machines[key] = sm;
-            }
-        }
-        m = _machines.get(key);
-        if (m==null) {
-            throw 'No machine ${machine} found in ${path}';
-        }
-        return m;
-    }
-    static var _printer = new Printer();
+	static var _machines = new Map<String, StateMachineModel>();
 
-    static public function buildInterface( path:String, machine:String) {
-        var model = getMachine( path, machine );
+	static function getMachine(path:String, machine:String):StateMachineModel {
+		var key = path + "_" + machine;
+		var m = _machines.get(key);
 
-        var cb = new tink.macro.ClassBuilder();
+		if (m == null) {
+			var smArray = Visio.read(path);
+			for (sm in smArray) {
+				var key = path + "_" + sm.name;
+				_machines[key] = sm;
+			}
+		}
+		m = _machines.get(key);
+		if (m == null) {
+			throw 'No machine ${machine} found in ${path}';
+		}
+		return m;
+	}
 
-        var moduleName = Context.getLocalModule();
+	static var _printer = new Printer();
 
-        Context.defineType({pack:Context.getLocalClass().get().pack,name:"I" + Context.getLocalClass().get().name + "Listener", pos:Context.currentPos(), kind:TDClass( null, null, true ), fields : [] });
+	static function getInterfaceName() {
+		return "I" + Context.getLocalClass().get().name + "Listener";
+	}
 
-        /*
- @this.WriteLine("public interface IOverlay : IStateMachineOverlay {");
-        @this.PushIndent("\t");
-        foreach (var s in stateMachine.StateNames) {
-            @this.WriteLine( "void OnEnter"+ s + "( ETrigger trigger);");
-            @this.WriteLine( "void OnEnter"+ s + "( EState state);");
-            @this.WriteLine( "void OnExit"+ s + "( ETrigger trigger);");
-        }
+	static public function buildInterface(path:String, machine:String) {
+		var model = getMachine(path, machine);
 
-        @this.PopIndent();
-        @this.WriteLine("}");
-        
-        @this.WriteLine( "List<IOverlay> _listeners = new List<IOverlay>();");
-        @this.WriteLine( "public override void Listen(IStateMachineOverlay listen){");
-        @this.PushIndent("\t");
-        @this.WriteLine( "var l = listen as IOverlay;");
-        @this.WriteLine( "switch(_state) {");
-        @this.PushIndent("\t");
-        foreach (var s in stateMachine.StateNames) {
-            @this.WriteLine("case EState." + s +": l.OnEnter" + s + "( ETrigger.NONE); break;");
-        }
+		var cb = new tink.macro.ClassBuilder();
 
-        @this.PopIndent();
-        @this.WriteLine("}");
-        @this.WriteLine( "_listeners.Add(l);");
-        @this.PopIndent();
-        @this.WriteLine("}");
-        foreach (var s in stateMachine.StateNames) {
-            
-            @this.WriteLine( "[MethodImpl(MethodImplOptions.AggressiveInlining)]");
-            @this.WriteLine( "void OnEnter"+ s + "( ETrigger trigger) {");
-            @this.PushIndent("\t");
-            @this.WriteLine( "for (var i = 0; i < _listeners.Count; i++) {");
-            @this.PushIndent("\t");
-            @this.WriteLine( "_listeners[i].OnEnter"+ s +" ( trigger);");
-            @this.PopIndent();
-            @this.WriteLine("}");
-            @this.PopIndent();
-            @this.PushIndent("\t");
-            @this.PopIndent();
-            @this.WriteLine("}");
-            @this.WriteLine( "[MethodImpl(MethodImplOptions.AggressiveInlining)]");
-            @this.WriteLine( "void OnEnter"+ s + "( EState state){");
-            @this.PushIndent("\t");
-            @this.WriteLine( "for (var i = 0; i < _listeners.Count; i++) {");
-            @this.PushIndent("\t");
-            @this.WriteLine( "_listeners[i].OnEnter"+ s +" ( state);");
-            @this.PopIndent();
-            @this.WriteLine("}");
-            @this.PopIndent();
-            @this.WriteLine("}");
-            @this.WriteLine( "[MethodImpl(MethodImplOptions.AggressiveInlining)]");
-            @this.WriteLine( "void OnExit"+ s + "( ETrigger trigger) {");
-            @this.PushIndent("\t");
-            @this.WriteLine( "for (var i = 0; i < _listeners.Count; i++) {");
-            @this.PushIndent("\t");
-            @this.WriteLine( "_listeners[i].OnExit"+ s +" ( trigger);");
-            @this.PopIndent();
-            @this.WriteLine("}");
-            @this.PopIndent();
-            @this.WriteLine("}");
-        }
-        */
-        var xx = cb.export(false);
+		var moduleName = Context.getLocalModule();
+
+		for (s in model.stateNames) {
+			var x:Function = {args: [Functions.toArg("trigger", macro:Int)]};
+
+			cb.addMember(makeMemberFunction("onEnterBy" + s, { ret: macro:Void, args: [Functions.toArg("trigger", macro:Int)]}));
+			cb.addMember(makeMemberFunction("onExit" + s, {ret: macro:Void, args: [Functions.toArg("trigger", macro:Int)]}));
+			cb.addMember(makeMemberFunction("onEnterFrom" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int)]}));
+		}
+
+		var xx = cb.export(false);
 
 		for (x in xx) {
 			trace(_printer.printField(x));
 		}
-		return xx;
-    }
 
-	macro static public function build(path:String, machine:String, makeInterface : Bool):Array<Field> {
-		var model = getMachine( path, machine );
+		Context.defineType({
+			pack: Context.getLocalClass().get().pack,
+			name: getInterfaceName(),
+			pos: Context.currentPos(),
+			kind: TDClass(null, null, true),
+			fields: xx
+		});
+
+		return xx;
+	}
+
+	macro static public function build(path:String, machine:String, makeInterface:Bool):Array<Field> {
+		var model = getMachine(path, machine);
 
 		var cb = new tink.macro.ClassBuilder();
 
@@ -434,11 +411,10 @@ class StateMachineBuilder {
 		buildIsInFunction(cb, model);
 		buildFireStrFunction(cb, model);
 
-        if (makeInterface) {
-            buildInterface(path, machine);
-        }
+		if (makeInterface) {
+			buildInterface(path, machine);
+		}
 		var xx = cb.export(false);
-
 
 		for (x in xx) {
 			trace(_printer.printField(x));
