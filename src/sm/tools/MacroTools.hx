@@ -6,6 +6,23 @@ package sm.tools;
 import haxe.macro.Expr;
 import tink.macro.Exprs;
 
+
+ function exprConstString(s:String) {
+    return Exprs.at(EConst(CString(s)));
+}
+
+function exprConstInt(i:Int) {
+    return Exprs.at(EConst(CInt(Std.string(i))));
+}
+
+ function exprID(s:String) {
+    return Exprs.at(EConst(CIdent(s)));
+}
+
+ function exprCall(method:String, ?params:Array<Expr>) {
+    return Exprs.call(Exprs.at(EConst(CIdent(method))), params);
+}
+
  function exprTrue():Expr {
     return macro true;
 }
@@ -26,4 +43,7 @@ import tink.macro.Exprs;
     return macro {};
 }
 
+function exprFor(ivar:Expr, len:Expr, expr:Expr) {
+    return macro for ($ivar in 0...$len) $expr;
+}
 #end
