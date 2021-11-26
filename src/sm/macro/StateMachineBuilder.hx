@@ -1,6 +1,5 @@
 package sm.macro;
 
-
 #if macro
 import haxe.macro.ComplexTypeTools;
 import tink.macro.Ops.Binary;
@@ -18,6 +17,13 @@ import sm.tools.StateXMLTools;
 import sm.tools.MacroTools;
 
 using tink.MacroApi;
+
+typedef StateAction = {
+	entries:Array<String>,
+	exits:Array<String>,
+	entrybys:Array<String>,
+	entryfroms:Array<String>
+}
 
 class StateMachineBuilder {
 	static function makeFinalInt(n:String, v:Int) {
@@ -76,11 +82,10 @@ class StateMachineBuilder {
 			cb.addMember(stateField);
 		}
 
+		cb.addMember(Member.prop("state", macro:Int, Context.currentPos(), false, true));
+		cb.addMember(Member.getter("state", null, macro return _state0, macro:Int));
 
-		cb.addMember(Member.prop( "state", macro:Int, Context.currentPos(), false, true));
-		cb.addMember(Member.getter("state", null, macro return _state0, macro :Int));
-
-		cb.addMember(Member.prop( "stateName", macro:String, Context.currentPos(), false, true));
+		cb.addMember(Member.prop("stateName", macro:String, Context.currentPos(), false, true));
 
 		var cases = new Array<Case>();
 
@@ -90,7 +95,7 @@ class StateMachineBuilder {
 		}
 
 		var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state0"))), cases, Exprs.at(EThrow(Exprs.at(EConst(CString("State not found")))))));
-		cb.addMember(Member.getter("stateName", null, sw, macro :String));
+		cb.addMember(Member.getter("stateName", null, sw, macro:String));
 
 		var ct = tink.macro.Types.asComplexType(getInterfaceName());
 		var listeneners = {
@@ -104,11 +109,73 @@ class StateMachineBuilder {
 
 		cb.addMember(listeneners);
 
-		cb.addMember(makeMemberFunction("addListener", Functions.func( macro _listeners.push(l), [Functions.toArg("l", ct)])));
+		cb.addMember(makeMemberFunction("addListener", Functions.func(macro _listeners.push(l), [Functions.toArg("l", ct)])));
+	}
+
+	static function addActions(map :  Map<String, Array<String>>, meta : Array<Array<Expr>>, f : String) {
+		if (meta == null) return;
+		for (se in meta) {
+			for (p in se) {
+				var state = Exprs.getIdent(p);
+				if (state.isSuccess()) {
+					if (!map.exists(state.sure())) map[state.sure()] = new Array<String>();
+					map[state.sure()].push(f);
+					
+					trace('${map[state.sure()][0]}');
+				}
+			}
+		}
+		
+	}
+	static function getActions() {
+		var entryMap = new Map<String, Array<String>>();
+		var entryByMap = new Map<String, Array<String>>();
+		var entryFromMap = new Map<String, Array<String>>();
+		var exitMap = new Map<String, Array<String>>();
+
+		//		trace('Examining: ${Context.getLocalClass().get().name}');
+		//		trace('Num Fields: ${Context.getLocalClass().get().fields.get().length}');
+		//		trace('Build Fields: ${Context.getBuildFields().length}');
+		for (field in Context.getBuildFields()) {
+			switch (field.kind) {
+				case FFun(fun):
+					var mmap = field.meta.toMap();
+					var enter = mmap.get(":enter");
+
+					addActions(entryMap,mmap.get(":enter"), field.name);
+					addActions(entryByMap,mmap.get(":enterby"), field.name);
+					addActions(entryFromMap,mmap.get(":enterfrom"), field.name);
+					addActions(exitMap,mmap.get(":exit"), field.name);
+
+					var exit = mmap.get(":exit");
+					var by = mmap.get(":enterby");
+					var from = mmap.get(":enterfrom");
+
+					if (enter != null || exit != null || by != null || from != null) {
+						var x = {
+							entries: enter,
+							exits: exit,
+							bys: by,
+							froms: from
+						}
+					}
+					if (enter != null) {
+						for (se in enter) {
+							for (p in se) {
+								trace('s:${Exprs.getIdent(p).orNull()}');
+							}
+						}
+					}
+				default:
+					continue;
+			}
+		}
 	}
 
 	static function buildFireFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		var stateCases = new Array<Case>();
+
+		getActions();
 
 		for (s in model.stateShapes) {
 			if (isGroupNode(s) || isGroupProxy(s))
@@ -284,8 +351,6 @@ class StateMachineBuilder {
 		cb.addMember(fireFunc);
 	}
 
-
-
 	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		for (s in model.stateNames) {
 			var enterByName = exprID("onEnterBy" + s);
@@ -334,22 +399,14 @@ class StateMachineBuilder {
 	static public function buildInterface(path:String, machine:String) {
 		var model = getMachine(path, machine);
 
-		var cb = new tink.macro.ClassBuilder();
-
-		var moduleName = Context.getLocalModule();
+		var fields = new Array<Field>();
 
 		for (s in model.stateNames) {
 			var x:Function = {args: [Functions.toArg("trigger", macro:Int)]};
 
-			cb.addMember(makeMemberFunction("onEnterBy" + s, {ret: macro:Void, args: [Functions.toArg("trigger", macro:Int)]}));
-			cb.addMember(makeMemberFunction("onExit" + s, {ret: macro:Void, args: [Functions.toArg("trigger", macro:Int)]}));
-			cb.addMember(makeMemberFunction("onEnterFrom" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int)]}));
-		}
-
-		var xx = cb.export(false);
-
-		for (x in xx) {
-			trace(_printer.printField(x));
+			fields.push(makeMemberFunction("onEnterBy" + s, {ret: macro:Void, args: [Functions.toArg("trigger", macro:Int)]}));
+			fields.push(makeMemberFunction("onExit" + s, {ret: macro:Void, args: [Functions.toArg("trigger", macro:Int)]}));
+			fields.push(makeMemberFunction("onEnterFrom" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int)]}));
 		}
 
 		Context.defineType({
@@ -357,31 +414,30 @@ class StateMachineBuilder {
 			name: getInterfaceName(),
 			pos: Context.currentPos(),
 			kind: TDClass(null, null, true),
-			fields: xx
+			fields: fields
 		});
 
-		return xx;
+		return [];
 	}
 
 	static function buildConstructor(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
-
 		var con = cb.getConstructor();
-		
-		con.init("_state0", Context.currentPos(),Value(exprID("S_" + model.defaultStates[0])) );
+
+		con.init("_state0", Context.currentPos(), Value(exprID("S_" + model.defaultStates[0])));
 		con.publish();
 	}
 
-	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool):Array<Field> {
+	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool, print:Bool):Array<Field> {
 		var model = getMachine(path, machine);
 
 		var cb = new tink.macro.ClassBuilder();
-		
+
 		buildConstants(cb, model);
 		buildVars(cb, model);
 		if (constructor) {
-			buildConstructor(cb,model);
+			buildConstructor(cb, model);
 		}
-		
+
 		buildEventFunctions(cb, model);
 		buildFireFunction(cb, model);
 		buildIsInFunction(cb, model);
@@ -390,12 +446,20 @@ class StateMachineBuilder {
 		if (makeInterface) {
 			buildInterface(path, machine);
 		}
-		var xx = cb.export(false);
 
-		for (x in xx) {
-			trace(_printer.printField(x));
-		}
-		return xx;
+		return cb.export(print);
+	}
+
+	macro static public function print():Array<Field> {
+		trace(_printer.printComplexType(Context.getLocalType().toComplex()));
+		return [];
+	}
+
+	macro static public function overlay(path:String, machine:String, print:Bool):Array<Field> {
+		var cb = new tink.macro.ClassBuilder();
+		var model = getMachine(path, machine);
+
+		return cb.export(print);
 	}
 }
 #end
