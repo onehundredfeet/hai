@@ -69,6 +69,25 @@ class StateMachineBuilder {
 	}
 
 	static function buildVars(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+
+		cb.addMember( {
+			name: "_inTransition",
+			doc: null,
+			meta: [],
+			access: [APrivate],
+			kind: FVar(macro:Bool, macro false ),
+			pos: Context.currentPos()
+		});
+
+		cb.addMember( {
+			name: "_triggerQueue",
+			doc: null,
+			meta: [],
+			access: [APrivate],
+			kind: FVar(macro:List<Int>, macro new List<Int>() ),
+			pos: Context.currentPos()
+		});
+
 		var count = 0;
 		for (ds in model.defaultStates) {
 			var stateField = {
@@ -204,6 +223,7 @@ class StateMachineBuilder {
 	static function buildFireFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		var stateCases = new Array<Case>();
 
+		
 		for (s in model.stateShapes) {
 			if (isGroupNode(s) || isGroupProxy(s))
 				continue;
@@ -284,16 +304,29 @@ class StateMachineBuilder {
 			stateCases.push(stateCasec);
 		}
 
-		var switches = new Array<Expr>();
+		var funBlock = new Array<Expr>();
+
+		funBlock.push( macro _triggerQueue.push( trigger ));
+		funBlock.push( macro if (_inTransition) return );
+		funBlock.push( macro _inTransition = true );
+	
+		var swBlockArray = new Array<Expr>();
+
 
 		for (i in 0...model.defaultStates.length) {
 			var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state" + i))), stateCases, Exprs.at(EThrow(Exprs.at(EConst(CString("State not found")))))));
-			switches.push(sw);
+			swBlockArray.push(sw);
 		}
 
-		var blk = Exprs.at(EBlock(switches));
+		var swBlock = Exprs.at(EBlock(swBlockArray));
+
+		funBlock.push( macro while (_triggerQueue.length > 0) { trigger = _triggerQueue.pop(); $swBlock; } );
+	
+		funBlock.push( macro _inTransition = false );
+
+
 		var arg:FunctionArg = {name: "trigger", type: macro:Int};
-		var fun:Function = {args: [arg], expr: blk};
+		var fun:Function = {args: [arg], expr: Exprs.at(EBlock(funBlock))};
 
 		var fireFunc = {
 			name: "fire",
