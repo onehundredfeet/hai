@@ -1,7 +1,7 @@
 package;
 
 
-@:build(sm.macro.StateMachineBuilder.build("test/test.vdx", "ServerClientState", true, true, true))
+@:build(sm.macro.StateMachineBuilder.build("test/test.vdx", "ServerClientState", true, true, false))
 class StateBuildTest {
     var a : Int = 0;
     var b : Int = 0;
@@ -9,7 +9,7 @@ class StateBuildTest {
 
     @:enter(JOINING)
     @:enter(DISCONNECTING)
-    function onBootState( s : Int) {
+    function onBootState( s : sm.State) {
         a = 1;
         b = 2;
     }
@@ -22,12 +22,17 @@ class StateBuildTest {
     }
 
     @:enterby(DISCONNECTING) 
-    function onDisconnectedAll(s : Int, t : Int) {
+    function onDisconnectedAll(s : sm.State, t : sm.Transition) {
         trace("I'm disconnected");
     }
 
     @:enterby(DISCONNECTING) 
-    function onDisconnectedAllTrigger( t : Int) {
+    function onDisconnectedAllTrigger( t : sm.Transition) {
+        trace("I'm disconnected");
+    }
+
+    @:enterby(DISCONNECTING) 
+    function onDisconnectedAllState( s : sm.State) {
         trace("I'm disconnected");
     }
 
@@ -38,17 +43,22 @@ class StateBuildTest {
 
 
     @:enterby(DISCONNECTING, TIMEOUT) 
-    function onDisconnectedByTimeout(s : Int) {
+    function onDisconnectedByTimeout(s : sm.State,  t : sm.Transition) {
         trace("I'm disconnected");
     }
 
     @:enterfrom(DISCONNECTING, RECONNECTING) 
-    function onDisconnectedFromReconnect(s : Int) {
+    function onDisconnectedFromReconnectAll(to : sm.State, from : sm.State) {
+        trace("I'm disconnected");
+    }
+
+    @:enterfrom(DISCONNECTING, RECONNECTING) 
+    function onDisconnectedFromReconnectNone() {
         trace("I'm disconnected");
     }
 
     @:exit(JOINING)
-    function onLeave(s : Int) {
+    function onLeave(s : sm.State) {
         a = 1;
         b = 2;
     }

@@ -27,18 +27,19 @@ typedef StateAction = {
 }
 
 class StateMachineBuilder {
-	static function makeFinalInt(n:String, v:Int) {
+	static function makeFinalInt(n:String, v:Int, ?t: ComplexType ) {
 		var newField = {
 			name: n,
 			doc: null,
 			meta: [],
 			access: [AStatic, APublic, AFinal],
-			kind: FVar(macro:Int, v.toExpr()),
+			kind: FVar((t == null) ? (macro:Int) : t, v.toExpr()),
 			pos: Context.currentPos()
 		};
 
 		return newField;
 	}
+	
 
 	static function makeMemberFunction(n:String, f:Function):Field {
 		var func = {
@@ -58,12 +59,12 @@ class StateMachineBuilder {
 		}
 		var count = 0;
 		for (ss in model.stateNames) {
-			cb.addMember(makeFinalInt("S_" + ss, count++));
+			cb.addMember(makeFinalInt("S_" + ss, count++, macro : sm.State ));
 			//            trace("State name:" + ss);
 		}
 		count = 0;
 		for (ss in model.transitionNames) {
-			cb.addMember(makeFinalInt("T_" + ss, count++));
+			cb.addMember(makeFinalInt("T_" + ss, count++, macro : sm.Transition ));
 			//            trace("State name:" + ss);
 		}
 	}
@@ -203,7 +204,7 @@ class StateMachineBuilder {
 					if (enter != null) {
 						for (se in enter) {
 							for (p in se) {
-								trace('s:${Exprs.getIdent(p).orNull()}');
+								//trace('s:${Exprs.getIdent(p).orNull()}');
 							}
 						}
 					}
@@ -411,19 +412,54 @@ class StateMachineBuilder {
 		cb.addMember(fireFunc);
 	}
 
+	// Tries to guess at correct overload
+	static function exprCallField(f:Field, a : Expr, b : Expr, allowSingle : Bool = true) : Expr {
+
+    switch(f.kind) {
+        case FFun(fun):
+			if (fun.args.length == 0) {
+				return Exprs.call(Exprs.at(EConst(CIdent(f.name))), []);
+			}
+			if (fun.args.length == 1) {
+				
+				if (allowSingle) {
+					var ct : ComplexType = fun.args[0].type;
+					if (ComplexTypeTools.toString(fun.args[0].type ) == "sm.State") {
+						return Exprs.call(Exprs.at(EConst(CIdent(f.name))), [a]);
+					} else if (ComplexTypeTools.toString(fun.args[0].type ) == "sm.Transition") {
+						return Exprs.call(Exprs.at(EConst(CIdent(f.name))), [b]);
+					}
+				}
+				
+				throw 'Unsupported parameter pattern on ${f.name}';				
+			}
+			if (fun.args.length == 2) {
+				return Exprs.call(Exprs.at(EConst(CIdent(f.name))), [a,b]);
+			}
+
+			throw 'Unsupported parameter pattern on ${f.name}';	
+        default : throw "Not a function";
+    }
+
+
+	return null;
+}
+
 	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		var actions = getActions();
 
 		for (s in model.stateNames) {
 			var index = macro _listeners[i];
 			var stateNameExpr = exprID("S_" + s);
+			var triggerExpr = exprID("trigger");
+			var stateExpr = exprID("state");
 			var handlerArray = new Array<Expr>();
 			if (actions.entry.exists(s))
 				for (a in actions.entry[s])
-					handlerArray.push(exprCallField(a,[exprID("S_" + s)]));
+					handlerArray.push(exprCallField(a,stateNameExpr, triggerExpr));
 			if (actions.entryBy.exists(s))
 				for (a in actions.entryBy[s])
-					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, [exprID("S_" + s), exprID("trigger")]) : exprIf(exprEq(exprID("trigger"), exprID("T_" + a.b)),  exprCallField(a.a,[exprID("S_" + s)])));
+					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, stateNameExpr, triggerExpr) : exprIf(exprEq(triggerExpr, exprID("T_" + a.b)),  exprCallField(a.a,stateNameExpr, exprID("trigger"))));
 
 			var call = Exprs.at(EField(index, "onEnterBy" + s));
 			handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
@@ -432,7 +468,7 @@ class StateMachineBuilder {
 			handlerArray.resize(0);
 			if (actions.exit.exists(s))
 				for (a in actions.exit[s])
-					handlerArray.push(exprCallField(a,[exprID("S_" + s)]));
+					handlerArray.push(exprCallField(a,stateNameExpr, triggerExpr));
 			call = Exprs.at(EField(index, "onExit" + s));
 			handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
 			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)])));
@@ -440,7 +476,7 @@ class StateMachineBuilder {
 			handlerArray.resize(0);
 			if (actions.entryFrom.exists(s))
 				for (a in actions.entryFrom[s])
-					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, [exprID("S_" + s),exprID("state")]) : exprIf(exprEq(exprID("state"), exprID("S_" + a.b)),  exprCallField(a.a,[exprID("S_" + s)])));
+					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, stateNameExpr,stateExpr, false) : exprIf(exprEq(exprID("state"), exprID("S_" + a.b)),  exprCallField(a.a,stateNameExpr,stateExpr, false)));
 			call = Exprs.at(EField(index, "onEnterFrom" + s));
 			handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, state)));
 			cb.addMember(makeMemberFunction("onEnterFrom" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("state", macro:Int)])));
