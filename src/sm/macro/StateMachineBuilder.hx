@@ -1,5 +1,6 @@
 package sm.macro;
 
+import tink.core.Pair;
 #if macro
 import haxe.macro.ComplexTypeTools;
 import tink.macro.Ops.Binary;
@@ -112,26 +113,47 @@ class StateMachineBuilder {
 		cb.addMember(makeMemberFunction("addListener", Functions.func(macro _listeners.push(l), [Functions.toArg("l", ct)])));
 	}
 
-	static function addActions(map :  Map<String, Array<String>>, meta : Array<Array<Expr>>, f : String) {
-		if (meta == null) return;
+	static function addActions(map:Map<String, Array<Field>>, meta:Array<Array<Expr>>, f:Field) {
+		if (meta == null)
+			return;
 		for (se in meta) {
 			for (p in se) {
 				var state = Exprs.getIdent(p);
 				if (state.isSuccess()) {
-					if (!map.exists(state.sure())) map[state.sure()] = new Array<String>();
+					if (!map.exists(state.sure()))
+						map[state.sure()] = new Array<Field>();
 					map[state.sure()].push(f);
-					
-					trace('${map[state.sure()][0]}');
 				}
 			}
 		}
-		
 	}
+
+	static function addConditionalActions(map:Map<String, Array<Pair<Field, String>>>, meta:Array<Array<Expr>>, f:Field) {
+		if (meta == null)
+			return;
+		for (se in meta) {
+			if (se.length >= 1) {
+				var state = Exprs.getIdent(se[0]);
+				if (state.isSuccess()) {
+					if (!map.exists(state.sure()))
+						map[state.sure()] = new Array<Pair<Field, String>>();
+
+					if (se.length >= 2 && Exprs.getIdent(se[1]).isSuccess()) {
+						map[state.sure()].push(new Pair(f, Exprs.getIdent(se[1]).sure()));
+					} else {
+						map[state.sure()].push(new Pair(f, null));
+					}
+				}
+			}
+			
+		}
+	}
+
 	static function getActions() {
-		var entryMap = new Map<String, Array<String>>();
-		var entryByMap = new Map<String, Array<String>>();
-		var entryFromMap = new Map<String, Array<String>>();
-		var exitMap = new Map<String, Array<String>>();
+		var entryMap = new Map<String, Array<Field>>();
+		var entryByMap = new Map<String, Array<Pair<Field, String>>>();
+		var entryFromMap = new Map<String, Array<Pair<Field, String>>>();
+		var exitMap = new Map<String, Array<Field>>();
 
 		//		trace('Examining: ${Context.getLocalClass().get().name}');
 		//		trace('Num Fields: ${Context.getLocalClass().get().fields.get().length}');
@@ -142,10 +164,10 @@ class StateMachineBuilder {
 					var mmap = field.meta.toMap();
 					var enter = mmap.get(":enter");
 
-					addActions(entryMap,mmap.get(":enter"), field.name);
-					addActions(entryByMap,mmap.get(":enterby"), field.name);
-					addActions(entryFromMap,mmap.get(":enterfrom"), field.name);
-					addActions(exitMap,mmap.get(":exit"), field.name);
+					addActions(entryMap, mmap.get(":enter"), field);
+					addActions(exitMap, mmap.get(":exit"), field);
+					addConditionalActions(entryByMap, mmap.get(":enterby"), field);
+					addConditionalActions(entryFromMap, mmap.get(":enterfrom"), field);
 
 					var exit = mmap.get(":exit");
 					var by = mmap.get(":enterby");
@@ -170,12 +192,17 @@ class StateMachineBuilder {
 					continue;
 			}
 		}
+
+		return {
+			entry: entryMap,
+			entryBy: entryByMap,
+			entryFrom: entryFromMap,
+			exit: exitMap
+		};
 	}
 
 	static function buildFireFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		var stateCases = new Array<Case>();
-
-		getActions();
 
 		for (s in model.stateShapes) {
 			if (isGroupNode(s) || isGroupProxy(s))
@@ -352,21 +379,38 @@ class StateMachineBuilder {
 	}
 
 	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+		var actions = getActions();
+
 		for (s in model.stateNames) {
-			var enterByName = exprID("onEnterBy" + s);
 			var index = macro _listeners[i];
+			var stateNameExpr = exprID("S_" + s);
+			var handlerArray = new Array<Expr>();
+			if (actions.entry.exists(s))
+				for (a in actions.entry[s])
+					handlerArray.push(exprCallField(a,[exprID("S_" + s)]));
+			if (actions.entryBy.exists(s))
+				for (a in actions.entryBy[s])
+					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, [exprID("S_" + s), exprID("trigger")]) : exprIf(exprEq(exprID("trigger"), exprID("T_" + a.b)),  exprCallField(a.a,[exprID("S_" + s)])));
 
 			var call = Exprs.at(EField(index, "onEnterBy" + s));
-			var enterByExpr = exprFor(macro i, macro _listeners.length, macro $call(trigger));
-			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock([enterByExpr]), [Functions.toArg("trigger", macro:Int)])));
+			handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
+			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)])));
 
+			handlerArray.resize(0);
+			if (actions.exit.exists(s))
+				for (a in actions.exit[s])
+					handlerArray.push(exprCallField(a,[exprID("S_" + s)]));
 			call = Exprs.at(EField(index, "onExit" + s));
-			enterByExpr = exprFor(macro i, macro _listeners.length, macro $call(trigger));
-			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock([enterByExpr]), [Functions.toArg("trigger", macro:Int)])));
+			handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
+			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)])));
 
+			handlerArray.resize(0);
+			if (actions.entryFrom.exists(s))
+				for (a in actions.entryFrom[s])
+					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, [exprID("S_" + s),exprID("state")]) : exprIf(exprEq(exprID("state"), exprID("S_" + a.b)),  exprCallField(a.a,[exprID("S_" + s)])));
 			call = Exprs.at(EField(index, "onEnterFrom" + s));
-			enterByExpr = exprFor(macro i, macro _listeners.length, macro $call(state));
-			cb.addMember(makeMemberFunction("onEnterFrom" + s, Functions.func(Exprs.toBlock([enterByExpr]), [Functions.toArg("state", macro:Int)])));
+			handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, state)));
+			cb.addMember(makeMemberFunction("onEnterFrom" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("state", macro:Int)])));
 		}
 	}
 
@@ -404,9 +448,9 @@ class StateMachineBuilder {
 		for (s in model.stateNames) {
 			var x:Function = {args: [Functions.toArg("trigger", macro:Int)]};
 
-			fields.push(makeMemberFunction("onEnterBy" + s, {ret: macro:Void, args: [Functions.toArg("trigger", macro:Int)]}));
-			fields.push(makeMemberFunction("onExit" + s, {ret: macro:Void, args: [Functions.toArg("trigger", macro:Int)]}));
-			fields.push(makeMemberFunction("onEnterFrom" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int)]}));
+			fields.push(makeMemberFunction("onEnterBy" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int), Functions.toArg("trigger", macro:Int)]}));
+			fields.push(makeMemberFunction("onExit" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int), Functions.toArg("trigger", macro:Int)]}));
+			fields.push(makeMemberFunction("onEnterFrom" + s, {ret: macro:Void, args: [Functions.toArg("from", macro:Int), Functions.toArg("to", macro:Int)]}));
 		}
 
 		Context.defineType({
