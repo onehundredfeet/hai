@@ -1,7 +1,7 @@
 package;
 
 
-@:build(sm.macro.StateMachineBuilder.build("test/test.vdx", "ServerClientState", true, true, false))
+@:build(sm.macro.StateMachineBuilder.build("test/test.vdx", "ServerClientState", false, true, false))
 class StateBuildTest {
     var a : Int = 0;
     var b : Int = 0;
@@ -72,7 +72,8 @@ class Test {
 
     public static function main() {
         var x = new StateBuildTest();
-
+        var y = new sm.Signal<Int>();
+        
         trace('State: ${x.state} ${x.stateName}');
         x.fire(StateBuildTest.T_JOINED);
         trace('Is In HOLDING:  ${x.isIn( StateBuildTest.S_HOLDING)}');

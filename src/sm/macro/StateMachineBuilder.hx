@@ -69,7 +69,7 @@ class StateMachineBuilder {
 		}
 	}
 
-	static function buildVars(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+	static function buildVars(cb:tink.macro.ClassBuilder, model:StateMachineModel, allowListeners: Bool) {
 
 		cb.addMember( {
 			name: "_inTransition",
@@ -118,19 +118,21 @@ class StateMachineBuilder {
 		var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state0"))), cases, Exprs.at(EThrow(Exprs.at(EConst(CString("State not found")))))));
 		cb.addMember(Member.getter("stateName", null, sw, macro:String));
 
-		var ct = tink.macro.Types.asComplexType(getInterfaceName());
-		var listeneners = {
-			name: "_listeners",
-			doc: null,
-			meta: [],
-			access: [APrivate],
-			kind: FVar(Types.asComplexType("Array", [TPType(ct)]), Exprs.at(ENew(Types.asTypePath("Array", [TPType(ct)]), []))),
-			pos: Context.currentPos()
-		};
+		if (allowListeners) {
+			var ct = tink.macro.Types.asComplexType(getInterfaceName());
+			var listeneners = {
+				name: "_listeners",
+				doc: null,
+				meta: [],
+				access: [APrivate],
+				kind: FVar(Types.asComplexType("Array", [TPType(ct)]), Exprs.at(ENew(Types.asTypePath("Array", [TPType(ct)]), []))),
+				pos: Context.currentPos()
+			};
 
-		cb.addMember(listeneners);
+			cb.addMember(listeneners);
 
-		cb.addMember(makeMemberFunction("addListener", Functions.func(macro _listeners.push(l), [Functions.toArg("l", ct)])));
+			cb.addMember(makeMemberFunction("addListener", Functions.func(macro _listeners.push(l), [Functions.toArg("l", ct)])));
+		}
 	}
 
 	static function addActions(map:Map<String, Array<Field>>, meta:Array<Array<Expr>>, f:Field) {
@@ -445,11 +447,10 @@ class StateMachineBuilder {
 	return null;
 }
 
-	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, model:StateMachineModel, allowListeners : Bool) {
 		var actions = getActions();
 
 		for (s in model.stateNames) {
-			var index = macro _listeners[i];
 			var stateNameExpr = exprID("S_" + s);
 			var triggerExpr = exprID("trigger");
 			var stateExpr = exprID("state");
@@ -461,24 +462,30 @@ class StateMachineBuilder {
 				for (a in actions.entryBy[s])
 					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, stateNameExpr, triggerExpr) : exprIf(exprEq(triggerExpr, exprID("T_" + a.b)),  exprCallField(a.a,stateNameExpr, exprID("trigger"))));
 
-			var call = Exprs.at(EField(index, "onEnterBy" + s));
-			handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
+			if (allowListeners) {
+				var index = macro _listeners[i];
+				var call = Exprs.at(EField(index, "onEnterBy" + s));
+				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
+			}
 			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)])));
-
+			
 			handlerArray.resize(0);
 			if (actions.exit.exists(s))
 				for (a in actions.exit[s])
 					handlerArray.push(exprCallField(a,stateNameExpr, triggerExpr));
-			call = Exprs.at(EField(index, "onExit" + s));
-			handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
+			if (allowListeners) {
+				var call = Exprs.at(EField(macro _listeners[i], "onExit" + s));
+				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
+			}
 			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)])));
-
 			handlerArray.resize(0);
 			if (actions.entryFrom.exists(s))
 				for (a in actions.entryFrom[s])
 					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, stateNameExpr,stateExpr, false) : exprIf(exprEq(exprID("state"), exprID("S_" + a.b)),  exprCallField(a.a,stateNameExpr,stateExpr, false)));
-			call = Exprs.at(EField(index, "onEnterFrom" + s));
-			handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, state)));
+			if (allowListeners) {
+				var call = Exprs.at(EField(macro _listeners[i], "onEnterFrom" + s));
+				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, state)));
+			}
 			cb.addMember(makeMemberFunction("onEnterFrom" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("state", macro:Int)])));
 		}
 	}
@@ -546,12 +553,12 @@ class StateMachineBuilder {
 		var cb = new tink.macro.ClassBuilder();
 
 		buildConstants(cb, model);
-		buildVars(cb, model);
+		buildVars(cb, model, makeInterface);
 		if (constructor) {
 			buildConstructor(cb, model);
 		}
 
-		buildEventFunctions(cb, model);
+		buildEventFunctions(cb, model, makeInterface);
 		buildFireFunction(cb, model);
 		buildIsInFunction(cb, model);
 		buildFireStrFunction(cb, model);
