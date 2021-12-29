@@ -18,6 +18,7 @@ import sm.tools.StateXMLTools;
 import sm.tools.MacroTools;
 
 using tink.MacroApi;
+using StringTools;
 
 typedef StateAction = {
 	entries:Array<String>,
@@ -104,7 +105,7 @@ class StateMachineBuilder {
 		}
 
 		cb.addMember(Member.prop("state", macro:Int, Context.currentPos(), false, true));
-		cb.addMember(Member.getter("state", null, macro return _state0, macro:Int));
+		cb.addMember(Member.getter("state", null, macro  _state0, macro:Int));
 
 		cb.addMember(Member.prop("stateName", macro:String, Context.currentPos(), false, true));
 
@@ -135,16 +136,24 @@ class StateMachineBuilder {
 		}
 	}
 
+	static function cleanState( s: String ) : String {
+		if (s.startsWith("S_")) {
+			return s.substr(2).toUpperCase();
+		}
+		return s.toUpperCase();
+	}
 	static function addActions(map:Map<String, Array<Field>>, meta:Array<Array<Expr>>, f:Field) {
 		if (meta == null)
 			return;
 		for (se in meta) {
 			for (p in se) {
 				var state = Exprs.getIdent(p);
+				
 				if (state.isSuccess()) {
-					if (!map.exists(state.sure()))
-						map[state.sure()] = new Array<Field>();
-					map[state.sure()].push(f);
+					var stateName =  cleanState(state.sure());
+					if (!map.exists(stateName))
+						map[stateName] = new Array<Field>();
+					map[stateName].push(f);
 				}
 			}
 		}
@@ -157,13 +166,15 @@ class StateMachineBuilder {
 			if (se.length >= 1) {
 				var state = Exprs.getIdent(se[0]);
 				if (state.isSuccess()) {
-					if (!map.exists(state.sure()))
-						map[state.sure()] = new Array<Pair<Field, String>>();
+					var stateName =  cleanState(state.sure());
+
+					if (!map.exists(stateName))
+						map[stateName] = new Array<Pair<Field, String>>();
 
 					if (se.length >= 2 && Exprs.getIdent(se[1]).isSuccess()) {
-						map[state.sure()].push(new Pair(f, Exprs.getIdent(se[1]).sure()));
+						map[stateName].push(new Pair(f, Exprs.getIdent(se[1]).sure()));
 					} else {
-						map[state.sure()].push(new Pair(f, null));
+						map[stateName].push(new Pair(f, null));
 					}
 				}
 			}
@@ -548,6 +559,9 @@ class StateMachineBuilder {
 	}
 
 	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool, print:Bool):Array<Field> {
+
+		//trace("Building state machine " + Context.getLocalClass().get().name);
+
 		var model = getMachine(path, machine);
 
 		var cb = new tink.macro.ClassBuilder();
