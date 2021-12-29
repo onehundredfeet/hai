@@ -4,8 +4,7 @@ package sm.tools;
 #if macro
 
 import haxe.macro.Expr;
-import tink.macro.Exprs;
-
+using tink.MacroApi;
 
  function exprConstString(s:String) : Expr{
     return Exprs.at(EConst(CString(s)));
@@ -16,7 +15,7 @@ function exprConstInt(i:Int) : Expr{
 }
 
  function exprID(s:String): Expr {
-    return Exprs.at(EConst(CIdent(s)));
+    return EConst(CIdent(s)).at();
 }
 
  function exprCall(method:String, ?params:Array<Expr>) : Expr {

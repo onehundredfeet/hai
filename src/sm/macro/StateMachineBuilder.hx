@@ -27,6 +27,15 @@ typedef StateAction = {
 	entryfroms:Array<String>
 }
 
+
+typedef ActionMaps = {
+	entry : Map<String, Array<Field>>,
+    entryBy : Map<String, Array<Pair<Field, String>>>,
+    entryFrom : Map<String, Array<Pair<Field, String>>>,
+    exit :  Map<String, Array<Field>>
+}
+
+
 class StateMachineBuilder {
 	static function makeFinalInt(n:String, v:Int, ?t: ComplexType ) {
 		var newField = {
@@ -182,7 +191,7 @@ class StateMachineBuilder {
 		}
 	}
 
-	static function getActions() {
+	static function getActions() : ActionMaps {
 		var entryMap = new Map<String, Array<Field>>();
 		var entryByMap = new Map<String, Array<Pair<Field, String>>>();
 		var entryFromMap = new Map<String, Array<Pair<Field, String>>>();
@@ -426,7 +435,7 @@ class StateMachineBuilder {
 	}
 
 	// Tries to guess at correct overload
-	static function exprCallField(f:Field, a : Expr, b : Expr, allowSingle : Bool = true) : Expr {
+	static function exprCallField(f:Field, a : Expr, b : Expr = null, allowSingle : Bool = true) : Expr {
 
     switch(f.kind) {
         case FFun(fun):
@@ -446,7 +455,7 @@ class StateMachineBuilder {
 				
 				throw 'Unsupported parameter pattern on ${f.name}';				
 			}
-			if (fun.args.length == 2) {
+			if (fun.args.length == 2 && b != null) {
 				return Exprs.call(Exprs.at(EConst(CIdent(f.name))), [a,b]);
 			}
 
@@ -458,8 +467,7 @@ class StateMachineBuilder {
 	return null;
 }
 
-	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, model:StateMachineModel, allowListeners : Bool) {
-		var actions = getActions();
+	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, actions : ActionMaps, model:StateMachineModel, allowListeners : Bool) {
 
 		for (s in model.stateNames) {
 			var stateNameExpr = exprID("S_" + s);
@@ -558,9 +566,30 @@ class StateMachineBuilder {
 		con.publish();
 	}
 
+	static function buildInitFunction(cb:tink.macro.ClassBuilder,  actions : ActionMaps, model:StateMachineModel) {
+
+		var xx = exprID("S_" + model.defaultStates[0]);
+
+		var blockList = new Array<Expr>();
+		blockList.push((macro _state0 = $xx));
+		
+		
+		if (actions.entry.exists(model.defaultStates[0])) {
+			var stateNameExpr = exprID("S_" + model.defaultStates[0]);
+			for (a in actions.entry[model.defaultStates[0]])
+				blockList.push(exprCallField(a,stateNameExpr));
+		}
+
+		var ff = EBlock(blockList).at().func([], false);
+		cb.addMember( makeMemberFunction("__state_init", ff) );
+
+//		con.init("_state0", Context.currentPos(), Value(exprID("S_" + model.defaultStates[0])));
+//		con.publish();
+	}
+
 	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool, print:Bool):Array<Field> {
 
-		//trace("Building state machine " + Context.getLocalClass().get().name);
+		trace("Building state machine " + Context.getLocalClass().get().name);
 
 		var model = getMachine(path, machine);
 
@@ -568,11 +597,10 @@ class StateMachineBuilder {
 
 		buildConstants(cb, model);
 		buildVars(cb, model, makeInterface);
-		if (constructor) {
-			buildConstructor(cb, model);
-		}
 
-		buildEventFunctions(cb, model, makeInterface);
+		var actions = getActions();
+
+		buildEventFunctions(cb, actions, model, makeInterface);
 		buildFireFunction(cb, model);
 		buildIsInFunction(cb, model);
 		buildFireStrFunction(cb, model);
@@ -581,6 +609,13 @@ class StateMachineBuilder {
 			buildInterface(path, machine);
 		}
 
+		if (constructor) {
+			buildConstructor(cb, model);
+		} else {
+			buildInitFunction(cb, actions, model);
+		}
+
+		
 		return cb.export(print);
 	}
 
