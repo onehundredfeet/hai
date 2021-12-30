@@ -95,7 +95,7 @@ class StateMachineBuilder {
 			doc: null,
 			meta: [],
 			access: [APrivate],
-			kind: FVar(macro:List<Int>, macro new List<Int>() ),
+			kind: FVar(macro:List<Int>, null ),
 			pos: Context.currentPos()
 		});
 
@@ -329,6 +329,7 @@ class StateMachineBuilder {
 
 		var funBlock = new Array<Expr>();
 
+//		funBlock.push( macro if (_triggerQueue == null) trace("_triggerQueue is null???"));
 		funBlock.push( macro _triggerQueue.push( trigger ));
 		funBlock.push( macro if (_inTransition) return );
 		funBlock.push( macro _inTransition = true );
@@ -571,8 +572,10 @@ class StateMachineBuilder {
 		var xx = exprID("S_" + model.defaultStates[0]);
 
 		var blockList = new Array<Expr>();
+		//manual initialization due to weird network hxbit behaviour
 		blockList.push((macro _state0 = $xx));
-		
+		blockList.push(macro _triggerQueue = new List<Int>() );
+		blockList.push(macro _inTransition = false );
 		
 		if (actions.entry.exists(model.defaultStates[0])) {
 			var stateNameExpr = exprID("S_" + model.defaultStates[0]);
