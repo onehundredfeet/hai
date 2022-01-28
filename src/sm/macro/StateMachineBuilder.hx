@@ -510,19 +510,23 @@ class StateMachineBuilder {
 		}
 	}
 
-	static var _machines = new Map<String, StateMachineModel>();
+	@:persistent static var _machines = new Map<String, StateMachineModel>();
+	@:persistent static var _fileDates = new Map<String, Date>();
 
 	static function getMachine(path:String, machine:String):StateMachineModel {
 		var key = path + "_" + machine;
 		var m = _machines.get(key);
 
-		if (m == null) {
-			var smArray = Visio.read(path);
-			for (sm in smArray) {
-				var key = path + "_" + sm.name;
-				_machines[key] = sm;
-			}
+		var stat:sys.FileStat = sys.FileSystem.stat(path);
+		if (m != null && _fileDates.exists(path) && _fileDates[path].getUTCSeconds() == stat.mtime.getUTCSeconds()){
+			return _machines.get(key);
 		}
+		var smArray = Visio.read(path);
+		for (sm in smArray) {
+			var key = path + "_" + sm.name;
+			_machines[key] = sm;
+		}
+		_fileDates[path] = stat.mtime;
 		m = _machines.get(key);
 		if (m == null) {
 			throw 'No machine ${machine} found in ${path}';
@@ -592,7 +596,7 @@ class StateMachineBuilder {
 
 	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool, print:Bool):Array<Field> {
 
-		trace("Building state machine " + Context.getLocalClass().get().name);
+		//trace("Building state machine " + Context.getLocalClass().get().name);
 
 		var model = getMachine(path, machine);
 

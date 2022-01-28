@@ -20,7 +20,7 @@ class StateBuildTest {
         a = 1;
         b = 2;
     }
-
+    
     @:enterby(DISCONNECTING) 
     function onDisconnectedAll(s : sm.State, t : sm.Transition) {
         trace("I'm disconnected");
@@ -72,7 +72,6 @@ class Test {
 
     public static function main() {
         var x = new StateBuildTest();
-        var y = new sm.Signal<Int>();
         
         trace('State: ${x.state} ${x.stateName}');
         x.fire(StateBuildTest.T_JOINED);

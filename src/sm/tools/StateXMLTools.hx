@@ -258,7 +258,7 @@ function getGroupInitialState(group : Xml) : Xml{
     var initialState = first(shapes.filter( x -> hasProp(x,"initial") ));
 
     if (initialState == null){
-        trace(shapes);
+//        trace(shapes);
         throw "Group " + getGroupName(group) + " has no initial state";
     } 
 
