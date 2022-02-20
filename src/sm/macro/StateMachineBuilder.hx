@@ -30,6 +30,7 @@ typedef StateAction = {
 
 typedef ActionMaps = {
 	entry : Map<String, Array<Field>>,
+	traverse: Map<String, Array<Field>>,
     entryBy : Map<String, Array<Pair<Field, String>>>,
     entryFrom : Map<String, Array<Pair<Field, String>>>,
     exit :  Map<String, Array<Field>>
@@ -51,12 +52,12 @@ class StateMachineBuilder {
 	}
 	
 
-	static function makeMemberFunction(n:String, f:Function):Field {
+	static function makeMemberFunction(n:String, f:Function, isInline = false):Field {
 		var func = {
 			name: n,
 			doc: null,
 			meta: [],
-			access: [APublic],
+			access: (isInline ? [APublic, AInline]: [APublic]),
 			kind: FFun(f),
 			pos: Context.currentPos()
 		};
@@ -151,6 +152,17 @@ class StateMachineBuilder {
 		}
 		return s.toUpperCase();
 	}
+
+	static function cleanIdentifier( s: String ) : String {
+		if (s.startsWith("S_")) {
+			return s.substr(2).toUpperCase();
+		}
+		if (s.startsWith("T_")) {
+			return s.substr(2).toUpperCase();
+		}
+		return s.toUpperCase();
+	}
+
 	static function addActions(map:Map<String, Array<Field>>, meta:Array<Array<Expr>>, f:Field) {
 		if (meta == null)
 			return;
@@ -159,7 +171,7 @@ class StateMachineBuilder {
 				var state = Exprs.getIdent(p);
 				
 				if (state.isSuccess()) {
-					var stateName =  cleanState(state.sure());
+					var stateName =  cleanIdentifier(state.sure());
 					if (!map.exists(stateName))
 						map[stateName] = new Array<Field>();
 					map[stateName].push(f);
@@ -193,6 +205,7 @@ class StateMachineBuilder {
 
 	static function getActions() : ActionMaps {
 		var entryMap = new Map<String, Array<Field>>();
+		var traverseMap = new Map<String, Array<Field>>();
 		var entryByMap = new Map<String, Array<Pair<Field, String>>>();
 		var entryFromMap = new Map<String, Array<Pair<Field, String>>>();
 		var exitMap = new Map<String, Array<Field>>();
@@ -206,16 +219,19 @@ class StateMachineBuilder {
 					var mmap = field.meta.toMap();
 					var enter = mmap.get(":enter");
 
+					addActions(traverseMap, mmap.get(":traverse"), field);
 					addActions(entryMap, mmap.get(":enter"), field);
 					addActions(exitMap, mmap.get(":exit"), field);
 					addConditionalActions(entryByMap, mmap.get(":enterby"), field);
 					addConditionalActions(entryFromMap, mmap.get(":enterfrom"), field);
 
+					/*
 					var exit = mmap.get(":exit");
 					var by = mmap.get(":enterby");
 					var from = mmap.get(":enterfrom");
+					var traverse = mmap.get(":traverse");
 
-					if (enter != null || exit != null || by != null || from != null) {
+					if (enter != null || exit != null || by != null || from != null || traverse != null) {
 						var x = {
 							entries: enter,
 							exits: exit,
@@ -230,6 +246,7 @@ class StateMachineBuilder {
 							}
 						}
 					}
+					*/
 				default:
 					continue;
 			}
@@ -237,6 +254,7 @@ class StateMachineBuilder {
 
 		return {
 			entry: entryMap,
+			traverse: traverseMap,
 			entryBy: entryByMap,
 			entryFrom: entryFromMap,
 			exit: exitMap
@@ -290,6 +308,10 @@ class StateMachineBuilder {
 						exited.push(pName);
 						parent = getParentGroup(parent);
 					}
+
+
+					// Does the arc fire now?
+					blockArray.push(exprCall("onTraverse", [exprID("trigger")]));
 
 					var walkList = new Array<Xml>();
 
@@ -469,6 +491,22 @@ class StateMachineBuilder {
 }
 
 	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, actions : ActionMaps, model:StateMachineModel, allowListeners : Bool) {
+
+		var caseArray = new Array<Case>();
+		var transitionExpr = exprID("transition");
+		for (t in model.transitionNames) {
+			var transitionNameExpr = exprID("T_" + t);
+
+			var handlerArray = new Array<Expr>();
+			if (actions.traverse.exists(t)) {
+				for (a in actions.traverse[t])
+					handlerArray.push(exprCallField(a,transitionNameExpr, transitionExpr));
+				caseArray.push({values:[transitionNameExpr], expr: EBlock(handlerArray).at()});
+			}
+
+		}
+
+		cb.addMember(makeMemberFunction("onTraverse", Functions.func(ESwitch(transitionExpr,caseArray,  null).at(), [Functions.toArg("transition", macro:Int)], null, null, false ), true));
 
 		for (s in model.stateNames) {
 			var stateNameExpr = exprID("S_" + s);
