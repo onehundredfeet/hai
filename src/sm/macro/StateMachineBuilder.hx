@@ -33,7 +33,9 @@ typedef ActionMaps = {
 	traverse: Map<String, Array<Field>>,
     entryBy : Map<String, Array<Pair<Field, String>>>,
     entryFrom : Map<String, Array<Pair<Field, String>>>,
-    exit :  Map<String, Array<Field>>
+    exit :  Map<String, Array<Field>>,
+	globalEntry: Array<Field>,
+	globalExit: Array<Field>
 }
 
 
@@ -96,7 +98,7 @@ class StateMachineBuilder {
 			doc: null,
 			meta: [],
 			access: [APrivate],
-			kind: FVar(macro:List<Int>, null ),
+			kind: FVar(macro:Array<Int>, null ),
 			pos: Context.currentPos()
 		});
 
@@ -180,6 +182,14 @@ class StateMachineBuilder {
 		}
 	}
 
+	static function addGlobals(array:Array<Field>, meta:Array<Array<Expr>>, f:Field) {
+		if (meta == null)
+			return;
+		for (se in meta) {
+			if (se.length == 0) array.push(f);
+		}
+	}
+
 	static function addConditionalActions(map:Map<String, Array<Pair<Field, String>>>, meta:Array<Array<Expr>>, f:Field) {
 		if (meta == null)
 			return;
@@ -209,6 +219,8 @@ class StateMachineBuilder {
 		var entryByMap = new Map<String, Array<Pair<Field, String>>>();
 		var entryFromMap = new Map<String, Array<Pair<Field, String>>>();
 		var exitMap = new Map<String, Array<Field>>();
+		var entryGlobals = new Array<Field>();
+		var exitGlobals = new Array<Field>();
 
 		//		trace('Examining: ${Context.getLocalClass().get().name}');
 		//		trace('Num Fields: ${Context.getLocalClass().get().fields.get().length}');
@@ -217,11 +229,13 @@ class StateMachineBuilder {
 			switch (field.kind) {
 				case FFun(fun):
 					var mmap = field.meta.toMap();
-					var enter = mmap.get(":enter");
+//					var enter = mmap.get(":enter");
 
 					addActions(traverseMap, mmap.get(":traverse"), field);
 					addActions(entryMap, mmap.get(":enter"), field);
 					addActions(exitMap, mmap.get(":exit"), field);
+					addGlobals(entryGlobals, mmap.get(":enter"), field);
+					addGlobals(exitGlobals, mmap.get(":enter"), field);
 					addConditionalActions(entryByMap, mmap.get(":enterby"), field);
 					addConditionalActions(entryFromMap, mmap.get(":enterfrom"), field);
 
@@ -257,7 +271,9 @@ class StateMachineBuilder {
 			traverse: traverseMap,
 			entryBy: entryByMap,
 			entryFrom: entryFromMap,
-			exit: exitMap
+			exit: exitMap,
+			globalExit: exitGlobals,
+			globalEntry: entryGlobals
 		};
 	}
 
@@ -525,6 +541,10 @@ class StateMachineBuilder {
 				var call = Exprs.at(EField(index, "onEnterBy" + s));
 				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
 			}
+
+			for (ge in actions.globalEntry) {
+				handlerArray.push(exprCallField(ge,stateNameExpr, triggerExpr));
+			}
 			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)])));
 			
 			handlerArray.resize(0);
@@ -616,7 +636,7 @@ class StateMachineBuilder {
 		var blockList = new Array<Expr>();
 		//manual initialization due to weird network hxbit behaviour
 		blockList.push((macro _state0 = $xx));
-		blockList.push(macro _triggerQueue = new List<Int>() );
+		blockList.push(macro _triggerQueue = new Array<Int>() );
 		blockList.push(macro _inTransition = false );
 		
 		if (actions.entry.exists(model.defaultStates[0])) {
@@ -631,6 +651,30 @@ class StateMachineBuilder {
 //		con.init("_state0", Context.currentPos(), Value(exprID("S_" + model.defaultStates[0])));
 //		con.publish();
 	}
+
+	static function buildResetFunction(cb:tink.macro.ClassBuilder,  actions : ActionMaps, model:StateMachineModel) {
+
+		var xx = exprID("S_" + model.defaultStates[0]);
+
+		var blockList = new Array<Expr>();
+		//manual initialization due to weird network hxbit behaviour
+		blockList.push((macro _state0 = $xx));
+		blockList.push(macro _triggerQueue.resize(0) );
+		blockList.push(macro _inTransition = false );
+		
+		if (actions.entry.exists(model.defaultStates[0])) {
+			var stateNameExpr = exprID("S_" + model.defaultStates[0]);
+			for (a in actions.entry[model.defaultStates[0]])
+				blockList.push(exprCallField(a,stateNameExpr));
+		}
+
+		var ff = EBlock(blockList).at().func([], false);
+		cb.addMember( makeMemberFunction("__reset_graph", ff) );
+
+//		con.init("_state0", Context.currentPos(), Value(exprID("S_" + model.defaultStates[0])));
+//		con.publish();
+	}
+
 
 	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool, print:Bool):Array<Field> {
 
@@ -660,6 +704,7 @@ class StateMachineBuilder {
 			buildInitFunction(cb, actions, model);
 		}
 
+		buildResetFunction(cb,actions, model);
 		
 		return cb.export(print);
 	}
