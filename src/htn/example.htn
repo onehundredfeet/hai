@@ -4,7 +4,7 @@ param DASH_RANGE : Float
 
 var enemyRange : Float
 var enemyVisible : Bool
-var agentStatemachine : MyStateMachine
+#var agentStatemachine : MyStateMachine
 
 
 abstract abstract_task_name
@@ -23,14 +23,14 @@ operator concrete_task_name(parameter : type) : criteria & criteria
     value = value + 1
 
 
-var agentStatemachineEmbed : StateMachine
-    A(a) -> B,
-    A(b) -> C,
-    B(b) -> C
+#var agentStatemachineEmbed : StateMachine
+#    A(a) -> B,
+#    A(b) -> C,
+#    B(b) -> C
 
-var agentStatemachineEmbedHierarchical : StateMachine
-    A(a) -> B,
-    A(b) -> C,
-    B(b) -> C,
-    B(entry) -> B.default,
-    B.default(c) -> B.next
+#var agentStatemachineEmbedHierarchical : StateMachine
+#    A(a) -> B,
+#    A(b) -> C,
+#    B(b) -> C,
+#    B(entry) -> B.default,
+#    B.default(c) -> B.next

@@ -16,35 +16,69 @@ enum BooleanExpression {
     BELiteral(isTrue: Bool);
 }
 
-typedef Parameter = {
+typedef Argument = {
     name:String,
     value:String
 }
 
+
+typedef Parameter = {
+    name:String,
+    type:String
+}
+
 typedef SubTask = {
     name:String,
-    paramters:Array<Parameter>
+    paramters:Array<Argument>
+}
+
+enum NumericExpression {
+    NELiteral(value:String);
+    NEUnaryOp(op:String, expr : NumericExpression);
+    NEBinaryOp(op:String, left : NumericExpression, right : NumericExpression);
+    NEIdent(name:String);
 }
 
 typedef Method = {name : String, condition : BooleanExpression, subtasks : Array<SubTask>};
+typedef Effect = {state : String, expression : NumericExpression };
 
+enum ExpressionType {
+    ETFloat;
+    ETInt;
+    ETBool;
+    ETUser(name:String);
+}
 
 enum Expression {
-    EVariable( kind : VariableKind,name : String, type : String, value : String );
+    EVariable( kind : VariableKind,name : String, type : ExpressionType, value : NumericExpression );
     EAbstract(name : String, methods : Array<Method>);
-    EOperator(name : String);
+    EOperator(name : String, parameters:Array<Parameter>, condition : BooleanExpression, effects : Array<Effect>);
 }
 
 
 class Parser extends Lexer {
 	
-	var typeDefs:Map<String,String>;
+	var types:Map<String,ExpressionType>;
     
 	public function new() {
         super();
-        typeDefs = new Map<String,String>();
+        types = new Map<String,ExpressionType>();
 
+        types.set( "Float", ETFloat);
+        types.set( "Bool", ETInt);
+        types.set( "Int", ETBool);
 	}
+
+    function parseType(  ) : ExpressionType {
+        var ts = ident();
+
+        var x = types[ts];
+        if (x != null) {
+            return x;
+        }
+        unexpected(TId(ts));
+        return null;
+    }
 
 	public function parseFile(fileName:String, input:haxe.io.Input) : Array<Expression>{
 		this.fileName = fileName;
@@ -76,7 +110,12 @@ class Parser extends Lexer {
                 alignment += 1;
                 continue;
             }
-            trace('Parsing ${tk}');
+            if (tk == THash) {
+                discardLine();
+                alignment = 0;
+                continue;
+            }
+            //trace('Parsing ${tk}');
 			
             if (alignment == 0) {
                 returnToken(tk);
@@ -92,14 +131,10 @@ class Parser extends Lexer {
    
 
     function parseBooleanExpression() : BooleanExpression {
-        
-        
-        
         var top : BooleanExpression = null;
 
         var tk = nextUnless(TNewLine);
 
-        trace('First tk is ${tk}');
         if (tk == TNewLine) {
             returnToken(tk);
             return BELiteral(true);
@@ -122,28 +157,51 @@ class Parser extends Lexer {
                     break;
             }
 
-            trace('Top is now ${top}');
+//            trace('Top is now ${top}');
 
             tk = nextUnless(TNewLine);
         }
 
         returnToken(tk);
 
-        trace('Boolean expression ${top}');
+        //trace('Boolean expression ${top}');
         return top;
     }
 
-    function parseCallArgument() : Parameter {
+    function parseCallArgument() : Argument {
         var x = ident();
         ensure(TColon);
         var y = ident();
-        trace('Argument found ${x} : ${y}');
+        //trace('Argument found ${x} : ${y}');
         return {name:x, value:y};
+    }
+
+    function parseParameterDecl() : Parameter {
+        var x = ident();
+        ensure(TColon);
+        var y = ident();
+        //trace('Parameter found ${x} : ${y}');
+        return {name:x, type:y};
+    }
+
+    function parseParameterList() : Array<Parameter> {
+        var list = [];
+
+        var n = next();
+
+        while (n != TPClose) {
+            returnToken(n);
+            list.push(parseParameterDecl());
+            n = next();
+            if (n == TComma) n = next();
+        }
+
+        return list;
     }
 
     function parseSubtask(name:String, alignment) : SubTask {
         if (maybe(TPOpen)) {
-            trace("Subtask has parameters");
+//            trace("Subtask has arguments");
             var n = next();
             var params = [];
 
@@ -162,30 +220,64 @@ class Parser extends Lexer {
     }
 
     function parseMethod(name:String, alignment) : Method {
-        trace ('Parsing method ${name}');
         ensure(TColon);
-        trace('Parsing Condition');
         var conditions = parseBooleanExpression();
-        trace('End of line');
         ensure(TNewLine);
 
-        trace('Now subtasks');
         var subAlign = 0;
         var subTasks = new Array<SubTask>();
 
-        trace('Next Align ${peekAlignment()}');
         while ((subAlign=peekAlignment()) > alignment) {
-            trace("SubTask?");
             switch( next() ) {
                 case TId(s):
                     subTasks.push(parseSubtask(s, subAlign));
                 case var x:
                     trace('Something else ${x}');
-                    
             }
            
         }
         return {name:name, condition: conditions, subtasks: subTasks};
+    }
+
+    function parseNumericExpression() : NumericExpression {
+        var top : NumericExpression = null;
+
+        var tk = nextUnless(TNewLine);
+
+        if (tk == TNewLine) {
+            unexpected(TNewLine);
+        }
+
+        while (tk != TNewLine) {
+            switch(tk) {
+                case TBrOpen:
+                case TBrClose:
+                case TId(ident):
+                    top = NEIdent(ident);
+                case TOp("!"):
+                    top = NEUnaryOp("!", parseNumericExpression() );   
+                case TOp(op):
+                    if (top == null) error("Binary operator requires left hand operand");
+                    top = NEBinaryOp(op, top, parseNumericExpression() );
+                case TNumber(value):
+                    top = NELiteral(value);
+                default:
+                    break;
+            }
+
+            tk = nextUnless(TNewLine);
+        }
+
+        returnToken(tk);
+
+        //trace('Effect expression ${top}');
+        return top;
+    }
+
+    function parseEffect( state:String, alignment ) : Effect {
+        ensure(TOp("="));
+
+        return  {state: state, expression: parseNumericExpression() };
     }
 
     function parseDeclLine() : Expression {
@@ -194,27 +286,29 @@ class Parser extends Lexer {
         return x;
     }
     function parseDecl() :Expression {
-        trace ('Parsing decl');
+//        trace ('Parsing decl');
         switch (next()) {
             case TId("const"):
                 var name = ident();
                 ensure(TColon);
-                var type = ident();
+                var type = parseType();
                 ensure(TOp("="));
-                var value = ident();
-                trace('Parsing const ${name} : ${type} [ ${value} ]');
-                return EVariable( VKConstant, name, type, value);
+                var value = parseNumericExpression();
+                var x = EVariable( VKConstant, name, type, value);
+                trace('Constant ${x}');
+                return x;
             case TId("param"):
                 var name = ident();
                 ensure(TColon);
-                var type = ident();
-                trace('Parsing param ${name} : ${type}');
-                return EVariable( VKParameter, name, type, null);
+                var type = parseType();
+                var x =  EVariable( VKParameter, name, type, null);
+                trace ('Parameter ${x}');
+                return x;
             case TId("var"):
                 var name = ident();
                 ensure(TColon);
-                var type = ident();
-                trace('Parsing var ${name} : ${type}');
+                var type = parseType();
+                trace('var ${name} : ${type}');
                 return EVariable( VKLocal, name, type, null);
             case TId("abstract"):
                 var name = ident();
@@ -231,11 +325,37 @@ class Parser extends Lexer {
                     }
                    
                 }
-                trace('Parsing abstract ${name} : ${methods}');
+                trace('Abstract ${name} : ${methods}');
                 return EAbstract(name, methods);
             case TId("operator"):
                 var name = ident();
-                return EOperator(name);
+                ensure(TPOpen);
+                var parameters = parseParameterList();
+                
+                var condition = null;
+                if (maybe(TColon)) {
+                    condition = parseBooleanExpression();
+                }
+
+                ensure(TNewLine);
+
+                var effects = [];
+
+                var alignment = 0;
+                while ((alignment=peekAlignment()) > 0) {
+                    switch( next() ) {
+                        case TId(s):
+                            effects.push(parseEffect(s, alignment));
+                        case var x:
+                            trace('Something else ${x}');
+                            
+                    }
+                   
+                }
+
+                var x = EOperator(name, parameters, condition, []);
+                trace('operator ${x}');
+                return x;
             case var tk:
 				return unexpected(tk);
         }

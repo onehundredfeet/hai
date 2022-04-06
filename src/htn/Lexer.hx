@@ -13,8 +13,11 @@ private enum Token {
 	TSemicolon;
 	TColon;
 	TComma;
+	TPeriod;
 	TOp(op:String);
+	TNumber(value:String);
 	TString(str:String);
+	THash;
 	// White Space
 	TTab;
 	TSpace;
@@ -56,6 +59,7 @@ class Lexer {
 			case TBrOpen: "{";
 			case TBrClose: "}";
 			case TComma: ",";
+			case THash: "#";
 			case TSemicolon: ";";
 			case TColon: ":";
 			case TOp(op): op;
@@ -63,9 +67,21 @@ class Lexer {
 			case TTab: "<tab>";
 			case TNewLine: "<line>";
 			case TSpace: "<space>";
+			case TPeriod: ".";
+			case TNumber(value): value;
 		}
 	}
 
+	function discardLine() {
+		var tk = next(false);
+		while(tk != TNewLine) {
+			if (tk == TEof) {
+				returnToken(TEof);
+				break;
+			}
+			tk = next(false);
+		}
+	}
     // --- Lexing
 
 	function invalidChar(c:Int) {
@@ -203,6 +219,18 @@ class Lexer {
 				case 10:
 					line++; // LF
 					return TNewLine;
+				case 35: return THash;
+				case 48,49,50,51,52,53,54,55,56,57:
+					var numStr = String.fromCharCode(char);
+
+					while( true ) {
+						char = readChar();
+						if (char >= 48 && char <= 57) numStr += String.fromCharCode(char);
+						if (char == 46) numStr +=  String.fromCharCode(char);
+						this.char = char;
+						break;
+					}
+					return TNumber(numStr);
 				/*			case 48,49,50,51,52,53,54,55,56,57: // 0...9
 					var n = (char - 48) * 1.0;
 					var exp = 0.;
@@ -280,6 +308,7 @@ class Lexer {
 					return TPClose;
 				case 44:
 					return TComma;
+				case 46: return TPeriod;
 				/*			case 46:
 					char = readChar();
 					switch( char ) {
