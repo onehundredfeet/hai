@@ -1,0 +1,36 @@
+
+const PI : Float = 3
+param DASH_RANGE : Float
+
+var enemyRange : Float
+var enemyVisible : Bool
+var agentStatemachine : MyStateMachine
+
+
+abstract abstract_task_name
+    method_name : true
+        subtask
+
+abstract abstract_task_name
+    method_name : enemyRange > DASH_RANGE
+        subtask
+        subtask
+        subtask( )
+        subtask( parameter : value )
+        subtask( parameter : value, parameter : value )
+
+operator concrete_task_name(parameter : type) : criteria & criteria
+    value = value + 1
+
+
+var agentStatemachineEmbed : StateMachine
+    A(a) -> B,
+    A(b) -> C,
+    B(b) -> C
+
+var agentStatemachineEmbedHierarchical : StateMachine
+    A(a) -> B,
+    A(b) -> C,
+    B(b) -> C,
+    B(entry) -> B.default,
+    B.default(c) -> B.next
