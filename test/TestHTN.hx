@@ -1,11 +1,26 @@
 package ;
 
 import htn.Parser;
+import htn.ExampleHTN;
+
+@:build( htn.macro.HTNBuilder.build( "src/htn/example.htn"))
+class LocalExampleHTN {
+    public function new() {}
+}
 
 class TestHTN {
-    public static function main() {
-        var parse = new Parser();
 
+    static function generate( ast : Array<Declaration> ) {
+        for(d in ast) {
+            trace('${d}');
+        }
+    }
+
+    public static function main() {
+        var x = new LocalExampleHTN();
+        var y = new ExampleHTN();
+        /*
+        var parse = new Parser();
         var file = "src/htn/example.htn";
 
         var content = try {
@@ -16,11 +31,12 @@ class TestHTN {
 		}
 
         try {
-			var decls = parse.parseFile(file,new haxe.io.BytesInput(content));
+			var ast = parse.parseFile(file,new haxe.io.BytesInput(content));
+            generate(ast);
 		} catch( msg : String ) {
             trace ('Parse error: ' + msg);
 			return;
 		}
-
+*/
     }
 }

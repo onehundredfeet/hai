@@ -7,11 +7,11 @@ var enemyVisible : Bool
 #var agentStatemachine : MyStateMachine
 
 
-abstract abstract_task_name
+abstract abstract1
     method_name : true
         subtask
 
-abstract abstract_task_name
+abstract abstract2
     method_name : enemyRange > DASH_RANGE
         subtask
         subtask

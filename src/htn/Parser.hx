@@ -49,10 +49,10 @@ enum ExpressionType {
     ETUser(name:String);
 }
 
-enum Expression {
-    EVariable( kind : VariableKind,name : String, type : ExpressionType, value : NumericExpression );
-    EAbstract(name : String, methods : Array<Method>);
-    EOperator(name : String, parameters:Array<Parameter>, condition : BooleanExpression, effects : Array<Effect>);
+enum Declaration {
+    DVariable( kind : VariableKind,name : String, type : ExpressionType, value : NumericExpression );
+    DAbstract(name : String, methods : Array<Method>);
+    DOperator(name : String, parameters:Array<Parameter>, condition : BooleanExpression, effects : Array<Effect>);
 }
 
 
@@ -80,14 +80,14 @@ class Parser extends Lexer {
         return null;
     }
 
-	public function parseFile(fileName:String, input:haxe.io.Input) : Array<Expression>{
+	public function parseFile(fileName:String, input:haxe.io.Input) : Array<Declaration>{
 		this.fileName = fileName;
 		pos = 0;
 		line = 1;
 		char = -1;
 		tokens = [];
 		this.input = input;
-        var declarations = new Array<Expression>();
+        var declarations = new Array<Declaration>();
 
         trace('Starting parsing...${fileName}');
 
@@ -280,12 +280,12 @@ class Parser extends Lexer {
         return  {state: state, expression: parseNumericExpression() };
     }
 
-    function parseDeclLine() : Expression {
+    function parseDeclLine() : Declaration {
         var x = parseDecl();
         ensure(TNewLine);   
         return x;
     }
-    function parseDecl() :Expression {
+    function parseDecl() :Declaration {
 //        trace ('Parsing decl');
         switch (next()) {
             case TId("const"):
@@ -294,22 +294,17 @@ class Parser extends Lexer {
                 var type = parseType();
                 ensure(TOp("="));
                 var value = parseNumericExpression();
-                var x = EVariable( VKConstant, name, type, value);
-                trace('Constant ${x}');
-                return x;
+                return DVariable( VKConstant, name, type, value);
             case TId("param"):
                 var name = ident();
                 ensure(TColon);
                 var type = parseType();
-                var x =  EVariable( VKParameter, name, type, null);
-                trace ('Parameter ${x}');
-                return x;
+                return DVariable( VKParameter, name, type, null);
             case TId("var"):
                 var name = ident();
                 ensure(TColon);
                 var type = parseType();
-                trace('var ${name} : ${type}');
-                return EVariable( VKLocal, name, type, null);
+                return DVariable( VKLocal, name, type, null);
             case TId("abstract"):
                 var name = ident();
                 ensure(TNewLine);
@@ -325,8 +320,7 @@ class Parser extends Lexer {
                     }
                    
                 }
-                trace('Abstract ${name} : ${methods}');
-                return EAbstract(name, methods);
+                return DAbstract(name, methods);
             case TId("operator"):
                 var name = ident();
                 ensure(TPOpen);
@@ -353,9 +347,7 @@ class Parser extends Lexer {
                    
                 }
 
-                var x = EOperator(name, parameters, condition, []);
-                trace('operator ${x}');
-                return x;
+                return DOperator(name, parameters, condition, []);
             case var tk:
 				return unexpected(tk);
         }
