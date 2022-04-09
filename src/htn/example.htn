@@ -17,10 +17,10 @@ abstract abstract2
         op2(parameter : enemyRange)
 
 operator op1() : enemyVisible & enemyVisible
-    value = value + 1
+    enemyRange = enemyRange + 1
 
 operator op2(parameter : type) 
-    value = value + 1
+    enemyRange = enemyRange + 1
 
 #var agentStatemachineEmbed : StateMachine
 #    A(a) -> B,

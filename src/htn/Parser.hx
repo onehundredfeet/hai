@@ -65,8 +65,8 @@ class Parser extends Lexer {
         types = new Map<String,ExpressionType>();
 
         types.set( "Float", ETFloat);
-        types.set( "Bool", ETInt);
-        types.set( "Int", ETBool);
+        types.set( "Bool", ETBool);
+        types.set( "Int", ETInt);
 	}
 
     function parseType(  ) : ExpressionType {
@@ -347,7 +347,7 @@ class Parser extends Lexer {
                    
                 }
 
-                return DOperator(name, parameters, condition, []);
+                return DOperator(name, parameters, condition, effects);
             case var tk:
 				return unexpected(tk);
         }

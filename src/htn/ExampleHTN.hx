@@ -9,11 +9,7 @@ package htn;
     var Incomplete = 5;
 }
 
-class AHTN {
-    var _concretePlan : Array<Int> = [];
-}
-
-class ExampleHTN extends AHTN {
+class ExampleHTN {
     static inline final PI : Float = 3;
 
     static inline final T_ABSTRACT1 = 0;
@@ -36,7 +32,7 @@ class ExampleHTN extends AHTN {
 
     }
 
-   
+    var _concretePlan : Array<Int> = [];
 
     public function plan(task : Int, maxDepth : Int) {
         _concretePlan.resize(0);
