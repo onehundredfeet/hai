@@ -8,6 +8,7 @@ import haxe.macro.Context;
 using tink.MacroApi;
 using haxe.macro.MacroStringTools;
 using StringTools;
+using Lambda;
 
 class HTNBuilder {
 	static function getExpressionType(et:ExpressionType) {
@@ -24,19 +25,30 @@ class HTNBuilder {
 		return null;
 	}
 
-	static function getNumericExpression(ne:NumericExpression) {
-		trace('NE: ${ne}');
-		switch (ne) {
-			case NELiteral(value):
-				return EConst(CFloat(value)).at();
-			default:
+	static function getNumericExpression(ne:NumericExpression) : haxe.macro.Expr{
+//		trace('NE: ${ne}');
+		return switch (ne) {
+			case NELiteral(value): EConst(CFloat(value)).at();
+			default: Context.error('Unknown numeric expression ${ne}', Context.currentPos());
 		}
-		return null;
+	}
+
+    static function getBinOp(op : String) {
+        return Binop.OpGt;
+    }
+    static function getBooleanExpression(be:BooleanExpression) {
+//		trace('BE: ${be}');
+		return switch (be) {
+            case BELiteral(isTrue): isTrue ? macro true : macro false;
+            case BEIdent(name): macro $i{name};
+            case BEBinaryOp(op, left, right): EBinop(getBinOp(op), getBooleanExpression(left), getBooleanExpression(right)).at();
+			default: Context.error('Unknown boolean expression ${be}', Context.currentPos());
+		}
 	}
 
 	static function generate(ast:Array<Declaration>):Array<Field> {
 		var fields = Context.getBuildFields();
-
+        var mp = new haxe.macro.Printer();
 		var constants = ast.filter((x) -> switch (x) {
 			case DVariable(kind, _, _, _):
 				kind == VKConstant;
@@ -45,6 +57,14 @@ class HTNBuilder {
 
 		var abstractCount = 0;
 		var operatorCount = 0;
+
+        var declarationTable = new Map<String, Declaration>();
+
+        ast.map((x) -> switch(x) {
+            case DVariable(kind, name, type, value): declarationTable.set(name, x );
+            case DAbstract(name, methods):declarationTable.set(name, x );
+            case DOperator(name, parameters, condition, effects):declarationTable.set(name, x );
+        });
 
 		fields = fields.concat(ast.map((x) -> switch (x) {
 			case DVariable(kind, name, type, value):
@@ -154,21 +174,21 @@ class HTNBuilder {
 				}
 			 */
 
-             function makeSetter( name : String, type : ExpressionType ) {
-                 var ident = macro $i{name};
-                 var body = macro {
-                    _effectStackValue.push($ident);
+			function makeSetter(name:String, type:ExpressionType) {
+				var ident = macro $i{name};
+				var body = macro {
+					_effectStackValue.push($ident);
 					$ident = v;
-                 };
-                 return {
-                    name: "set_" + name,
-                    doc: null,
-                    meta: [],
-                    access: [AInline],
-                    kind: FFun(body.func(["v".toArg(getExpressionType(type))])),
-                    pos: Context.currentPos()
-                };
-             }
+				};
+				return {
+					name: "set_" + name,
+					doc: null,
+					meta: [],
+					access: [AInline],
+					kind: FFun(body.func(["v".toArg(getExpressionType(type))])),
+					pos: Context.currentPos()
+				};
+			}
 			fields = fields.concat(ast.map((x) -> switch (x) {
 				case DVariable(kind, name, type, value):
 					switch (kind) {
@@ -180,6 +200,109 @@ class HTNBuilder {
 			}).filter((x) -> x != null));
 		}
 
+
+
+		// Resolve functions
+		{
+            function makeOperator(name:String, parameters:Array<Parameter>, condition : BooleanExpression, effects :Array<Effect>) {
+                var ident = macro $i{name};
+                
+                    var effectsExpr = effects.map( (x) ->
+                    {
+//                        var targetIdent = macro $i{x.state};
+                        var expr = getNumericExpression( x.expression );
+                        var call_ident = macro $i{"set_" + x.state};
+                        return macro $call_ident( $expr );
+                    });
+
+                    /*
+                    
+                    if (enemyVisible && enemyVisible) {
+                        setEnemyRange(enemyRange + val_f);
+                        myOperator2(val_f);
+                        return concreteSuccess(O_OPERATOR2);
+                    }
+            
+                    return BranchState.Failed;
+  */
+                var cond = condition != null ? getBooleanExpression(condition) : macro true;
+                var enumIdent = macro $i{"O_" + name.toUpperCase()};
+                var body = macro {
+                    if ($cond) {
+                        $b{effectsExpr};
+                        return concreteSuccess($enumIdent);
+                    }
+                    return BranchState.Failed;
+                };
+                return {
+                    name: "operator_" + name,
+                    doc: null,
+                    meta: [],
+                    access: [],
+                    kind: FFun(body.func([])),
+                    pos: Context.currentPos()
+                };
+            }
+
+             function makeResolve(name:String, methods:Array<Method>) {
+				var ident = macro $i{name};
+                var methodBlocks = new Array<Expr>();
+
+                for (m in methods) {
+                    //{name : String, condition : BooleanExpression, subtasks : Array<SubTask>}
+
+                    var se = m.subtasks.map( (x) ->
+                        {
+                            var decl = declarationTable.get(x.name);
+                            if (decl == null)  Context.error('Could not find declaration ${x.name}', Context.currentPos());
+                            var call = switch(decl) {
+                                case DAbstract(name, methods): 
+                                    (macro $i{'resolve_${name}'}).call( [macro $i{"next_depth"}]);
+                                case DOperator(name, parameters, condition, effects): (macro $i{'operator_${name}'}).call( );
+                                default:
+                                    Context.error('${decl} is not a subtask', Context.currentPos());
+                                    macro "";
+                            }
+                            return macro $call == BranchState.Success;
+                        }
+                    );
+
+                    var resolves = se.fold( (x,y) -> macro $x && $y, macro true);
+
+                    var cond = getBooleanExpression(m.condition);
+                    var expr = macro if ($cond && $resolves) return BranchState.Success;
+                    trace(mp.printExpr(expr));
+                    methodBlocks.push( expr  );
+                }
+                
+				var body = macro {
+					var next_depth = depth - 1;
+					if (next_depth <= 0) return BranchState.Incomplete;
+
+					var concrete_progress = _concretePlan.length;
+
+                    $b{methodBlocks};
+
+					unwind(concrete_progress);
+					return BranchState.Failed;
+				};
+				return {
+					name: "resolve_" + name,
+					doc: null,
+					meta: [],
+					access: [],
+					kind: FFun(body.func(["depth".toArg(macro :Int)])),
+					pos: Context.currentPos()
+				};
+			}
+
+             fields = fields.concat(ast.map((x) -> switch (x) {
+				case DAbstract(name, methods):makeResolve(name,methods);
+				case DOperator(name, parameters, condition, effects): makeOperator( name, parameters, condition, effects );
+				default: null;
+			}).filter((x) -> x != null));
+
+		}
 		// Plan function
 		{
 			var switch_block = ast.map((x) -> switch (x) {
@@ -226,7 +349,7 @@ class HTNBuilder {
 			});
 		}
 
-		var mp = new haxe.macro.Printer();
+		
 
 		for (d in ast) {
 			trace('${d}');

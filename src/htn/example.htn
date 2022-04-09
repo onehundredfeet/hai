@@ -9,20 +9,17 @@ var enemyVisible : Bool
 
 abstract abstract1
     method_name : true
-        subtask
+        op1
 
 abstract abstract2
     method_name : enemyRange > DASH_RANGE
-        subtask
-        subtask
-        subtask( )
-        subtask( parameter : value )
-        subtask( parameter : value, parameter : value )
+        op1
+        op2(parameter : enemyRange)
 
-operator op1(parameter : type) : criteria & criteria
+operator op1() : enemyVisible & enemyVisible
     value = value + 1
 
-operator op2(parameter : type) : criteria & criteria
+operator op2(parameter : type) 
     value = value + 1
 
 #var agentStatemachineEmbed : StateMachine
