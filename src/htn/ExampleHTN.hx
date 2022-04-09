@@ -9,7 +9,11 @@ package htn;
     var Incomplete = 5;
 }
 
-class ExampleHTN {
+class AHTN {
+    var _concretePlan : Array<Int> = [];
+}
+
+class ExampleHTN extends AHTN {
     static inline final PI : Float = 3;
 
     static inline final T_ABSTRACT1 = 0;
@@ -32,7 +36,7 @@ class ExampleHTN {
 
     }
 
-    var _concretePlan : Array<Int> = [];
+   
 
     public function plan(task : Int, maxDepth : Int) {
         _concretePlan.resize(0);
@@ -73,6 +77,7 @@ class ExampleHTN {
     function operator_OPERATOR1( ) : BranchState {
         if (enemyVisible) {
             setEnemyRange(enemyRange + 1);
+            myOperator1();
             return concreteSuccess(O_OPERATOR1);
         }
 
@@ -82,6 +87,7 @@ class ExampleHTN {
     function operator_OPERATOR2( val_f : Float) : BranchState {
         if (enemyVisible && enemyVisible) {
             setEnemyRange(enemyRange + val_f);
+            myOperator2(val_f);
             return concreteSuccess(O_OPERATOR2);
         }
 
@@ -134,6 +140,17 @@ class ExampleHTN {
         }
         unwind(concrete_progress);
         return BranchState.Failed;
+    }
+
+    // User class
+    @:operator(O_OPERATOR1)
+    function myOperator1() {
+
+    }
+
+    @:operator(O_OPERATOR2)
+    function myOperator2(parameter : Float) {
+
     }
 }
 

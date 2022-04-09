@@ -19,9 +19,11 @@ abstract abstract2
         subtask( parameter : value )
         subtask( parameter : value, parameter : value )
 
-operator concrete_task_name(parameter : type) : criteria & criteria
+operator op1(parameter : type) : criteria & criteria
     value = value + 1
 
+operator op2(parameter : type) : criteria & criteria
+    value = value + 1
 
 #var agentStatemachineEmbed : StateMachine
 #    A(a) -> B,
