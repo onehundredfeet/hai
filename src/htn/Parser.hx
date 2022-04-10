@@ -21,10 +21,16 @@ typedef Argument = {
     value:String
 }
 
+enum NumericExpression {
+    NELiteral(value:String);
+    NEUnaryOp(op:String, expr : NumericExpression);
+    NEBinaryOp(op:String, left : NumericExpression, right : NumericExpression);
+    NEIdent(name:String);
+}
 
 typedef Parameter = {
     name:String,
-    type:String
+	expression:NumericExpression
 }
 
 typedef SubTask = {
@@ -32,12 +38,7 @@ typedef SubTask = {
     paramters:Array<Argument>
 }
 
-enum NumericExpression {
-    NELiteral(value:String);
-    NEUnaryOp(op:String, expr : NumericExpression);
-    NEBinaryOp(op:String, left : NumericExpression, right : NumericExpression);
-    NEIdent(name:String);
-}
+
 
 typedef Method = {name : String, condition : BooleanExpression, subtasks : Array<SubTask>};
 typedef Effect = {state : String, expression : NumericExpression };
@@ -52,7 +53,7 @@ enum ExpressionType {
 enum Declaration {
     DVariable( kind : VariableKind,name : String, type : ExpressionType, value : NumericExpression );
     DAbstract(name : String, methods : Array<Method>);
-    DOperator(name : String, parameters:Array<Parameter>, condition : BooleanExpression, effects : Array<Effect>);
+    DOperator(name : String,  condition : BooleanExpression, effects : Array<Effect>, parameters:Array<Parameter>);
 }
 
 
@@ -176,6 +177,7 @@ class Parser extends Lexer {
         return {name:x, value:y};
     }
 
+	/*
     function parseParameterDecl() : Parameter {
         var x = ident();
         ensure(TColon);
@@ -198,7 +200,7 @@ class Parser extends Lexer {
 
         return list;
     }
-
+*/
     function parseSubtask(name:String, alignment) : SubTask {
         if (maybe(TPOpen)) {
 //            trace("Subtask has arguments");
@@ -275,9 +277,15 @@ class Parser extends Lexer {
     }
 
     function parseEffect( state:String, alignment ) : Effect {
-        ensure(TOp("="));
+//        ensure(TOp("="));
 
         return  {state: state, expression: parseNumericExpression() };
+    }
+
+	function parseParameter( name:String, alignment ) : Parameter {
+//        ensure(TColon);
+
+        return  {name: name, expression: parseNumericExpression() };
     }
 
     function parseDeclLine() : Declaration {
@@ -323,8 +331,6 @@ class Parser extends Lexer {
                 return DAbstract(name, methods);
             case TId("operator"):
                 var name = ident();
-                ensure(TPOpen);
-                var parameters = parseParameterList();
                 
                 var condition = null;
                 if (maybe(TColon)) {
@@ -334,12 +340,18 @@ class Parser extends Lexer {
                 ensure(TNewLine);
 
                 var effects = [];
-
+				var parameters = [];
                 var alignment = 0;
                 while ((alignment=peekAlignment()) > 0) {
                     switch( next() ) {
                         case TId(s):
-                            effects.push(parseEffect(s, alignment));
+							if (maybe(TColon)) {
+								parameters.push(parseParameter(s, alignment));
+								ensure(TNewLine);
+							} else if (maybe(TOp("="))) {
+								effects.push(parseEffect(s, alignment));
+								ensure(TNewLine);
+							}
                         case var x:
                             trace('Something else ${x}');
                             
@@ -347,7 +359,7 @@ class Parser extends Lexer {
                    
                 }
 
-                return DOperator(name, parameters, condition, effects);
+                return DOperator(name, condition, effects, parameters);
             case var tk:
 				return unexpected(tk);
         }

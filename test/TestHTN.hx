@@ -8,8 +8,14 @@ import htn.Operator;
 class LocalExampleHTN {
     public function new() {}
 
-    @:operator("op1")
-    function op1() : OperatorResult {
+    @:tick(op1)
+    function op1(parameter : Float) : OperatorResult {
+        trace("Operator 1:");
+        return OperatorResult.Running;
+    }
+
+    @:begin(op1)
+    function op1_Begin() : OperatorResult {
         trace("Operator 1:");
         return OperatorResult.Running;
     }

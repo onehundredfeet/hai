@@ -96,15 +96,48 @@ class HTNBuilder {
 	static function generate(ast:Array<Declaration>):Array<Field> {
 		var fields = Context.getBuildFields();
 
-		var metaMap = new Map<String, Map<String, Array<Array<Expr>>>>();
+		// Build meta data
+		var operatorMap = new Map<String,Array<Field>>();
+		var beginMap = new Map<String,Array<Field>>();
+
 		fields.map((x) -> {
 			if (x.kind.match(FFun(_))) {
 				var y = x.meta.toMap();
-				if (y.exists(":operator")) {
-					metaMap.set(x.name, y);
+				if (y.exists(":tick")) {
+					var opNames = y.get(":tick");
+					for (olist in opNames) {
+						for (o in olist) {
+							var oname = getStringValue(o);
+							trace('Found operator ${oname}');
+
+							var ofields = operatorMap.get(oname);
+							if (ofields == null) {
+								ofields = new Array<Field>();
+								operatorMap.set(oname, ofields);
+							}
+							ofields.push(x);
+						}
+					}
+				}
+				if (y.exists(":begin")) {
+					var opNames = y.get(":begin");
+					for (olist in opNames) {
+						for (o in olist) {
+							var oname = getStringValue(o);
+							trace('Found operator ${oname}');
+
+							var ofields = beginMap.get(oname);
+							if (ofields == null) {
+								ofields = new Array<Field>();
+								beginMap.set(oname, ofields);
+							}
+							ofields.push(x);
+						}
+					}
 				}
 			}
 		});
+
 		var mp = new haxe.macro.Printer();
 		var constants = ast.filter((x) -> switch (x) {
 			case DVariable(kind, _, _, _):
@@ -120,7 +153,7 @@ class HTNBuilder {
 		ast.map((x) -> switch (x) {
 			case DVariable(kind, name, type, value): declarationTable.set(name, x);
 			case DAbstract(name, methods): declarationTable.set(name, x);
-			case DOperator(name, parameters, condition, effects): declarationTable.set(name, x);
+			case DOperator(name,  condition, effects, parameters): declarationTable.set(name, x);
 		});
 
 		fields = fields.concat(ast.map((x) -> switch (x) {
@@ -160,7 +193,7 @@ class HTNBuilder {
 					kind: FVar(macro:Int, (abstractCount++).toExpr()),
 					pos: Context.currentPos()
 				};
-			case DOperator(name, parameters, condition, effects):
+			case DOperator(name, condition, effects,  parameters):
 				{
 					name: "O_" + name.toUpperCase(),
 					doc: null,
@@ -193,7 +226,7 @@ class HTNBuilder {
 		// unwind
 		{
 			var switch_block = ast.map((x) -> switch (x) {
-				case DOperator(name, parameters, condition, effects):
+				case DOperator(name,  condition, effects, parameters):
 					var fn = macro $i{"resolve_" + name};
 					var unwinds = effects.map((x) -> {
 						var varIdent = macro $i{x.state};
@@ -269,17 +302,6 @@ class HTNBuilder {
 					return macro $call_ident($expr);
 				});
 
-				/*
-
-					if (enemyVisible && enemyVisible) {
-						setEnemyRange(enemyRange + val_f);
-						myOperator2(val_f);
-						return concreteSuccess(O_OPERATOR2);
-					}
-
-					return BranchState.Failed;
-				 */
-
 				var cond = condition != null ? getBooleanExpression(condition) : macro true;
 				var enumIdent = macro $i{"O_" + name.toUpperCase()};
 				var body = macro {
@@ -312,7 +334,7 @@ class HTNBuilder {
 						var call = switch (decl) {
 							case DAbstract(name, methods):
 								(macro $i{'resolve_${name}'}).call([macro $i{"next_depth"}]);
-							case DOperator(name, parameters, condition, effects): (macro $i{'operator_${name}'}).call();
+							case DOperator(name, _, _, _): (macro $i{'operator_${name}'}).call();
 							default:
 								Context.error('${decl} is not a subtask', Context.currentPos());
 								macro "";
@@ -353,7 +375,7 @@ class HTNBuilder {
 
 			fields = fields.concat(ast.map((x) -> switch (x) {
 				case DAbstract(name, methods): makeResolve(name, methods);
-				case DOperator(name, parameters, condition, effects): makeOperatorSim(name, parameters, condition, effects);
+				case DOperator(name, condition, effects, parameters): makeOperatorSim(name, parameters, condition, effects);
 				default: null;
 			}).filter((x) -> x != null));
 		}
@@ -388,8 +410,21 @@ class HTNBuilder {
 		}
 
 		{
-			var switchBlock = new Array<Case>();
-			var switchExpr = ESwitch( macro op, switchBlock,null).at();
+			var switchBlock = ast.map((x) -> switch (x) {
+				case DOperator(name, condition, effects,  parameters): beginMap.exists(name) ? {
+					var c : Case = {
+						values: [macro $i{"O_" + name.toUpperCase()}],
+						expr: EBlock(beginMap.get(name).map( 
+							(x) -> {
+								(macro $i{x.name}).call();
+							}
+						 )).at()
+					};
+					c;
+				}: null;
+				default: null;
+			}).filter((x) -> x != null);
+			var switchExpr = ESwitch(macro op, switchBlock, null).at();
 
 			// beginOperator
 			fields.push({
@@ -410,10 +445,41 @@ class HTNBuilder {
 			beginOperator(_concretePlan[last]);
 		}).func([], null, null, false)));
 
+		// Tick
 		{
-			var switchBlock = new Array<Case>();
+			function makeTickCallArguments(params : Array<Parameter>, f : Field) : Array<Expr>{
+
+				switch(f.kind) {
+					case FFun(func):
+						return func.args.map( (x) -> 
+						{
+							var p = params.find( (y) -> y.name == x.name);
+							if (p == null) Context.error('Required operator parameter ${x.name} not found', Context.currentPos());
+							return getNumericExpression( p.expression );
+						}
+						);
+					default:
+				}
+				return [];
+			}
+			var switchBlock = ast.map((x) -> switch (x) {
+				case DOperator(name,  condition, effects, parameters): operatorMap.exists(name) ? {
+					var c : Case = {
+						values: [macro $i{"O_" + name.toUpperCase()}],
+						expr: EBlock(operatorMap.get(name).map( 
+							(x) -> {
+								var call = (macro $i{x.name}).call(makeTickCallArguments(parameters, x));
+								// TODO [RC] - Make multi-call 
+								macro status = $call;
+							}
+						 )).at()
+					};
+					c;
+				}: null;
+				default: null;
+			}).filter((x) -> x != null);
+
 			var switchExpr = ESwitch(macro _concretePlan[last], switchBlock, null).at();
-			// Tick
 			fields.push(makeField("tick", [APublic], (macro {
 				var last = _concretePlan.length - 1;
 				if (last < 0)
@@ -434,50 +500,8 @@ class HTNBuilder {
 				return status;
 			}).func([], macro:OperatorResult, null, false)));
 		}
-		/*
-			public function tick() : OperatorResult {
-				var last = _concretePlan.length - 1;
-				
-				if (last < 0) return OperatorResult.Completed;
 
-				var status = OperatorResult.Completed;
-				while (last >= 0 && status == OperatorResult.Completed) {
-					switch(_concretePlan[last]) {
-						case O_OPERATOR1: status = myOperator1();
-						case O_OPERATOR2:status = myOperator2(0.);
-						default: throw('Unknown operator ${_concretePlan[last]}');
-					}
-					if (status == OperatorResult.Completed) {
-						_concretePlan.pop();
-						last--;
 
-						if (last >= 0){
-							beginOperator( _concretePlan[last] );
-						}
-					}
-				}
-				return status;
-			}
-
-		 */
-
-		// Execution
-		{
-			function makeOperatorExecution(name) {
-				for (f in metaMap.keyValueIterator()) {
-					var x = f.value.get(":operator");
-					if (x != null) {
-						for (y in x) {
-							for (z in y) {
-								if (getStringValue(z).toUpperCase() == name.toUpperCase()) {
-									trace('Found operator ${f.key}');
-								}
-							}
-						}
-					}
-				}
-			}
-		}
 
 		{
 			var bodyBlock = macro {

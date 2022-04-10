@@ -92,8 +92,12 @@ class Lexer {
 		throw msg + " line " + line;
 	}
 
-	function unexpected(tk):Dynamic {
-		error("Unexpected " + tokenString(tk));
+	function unexpected(tk, et : Token = null):Dynamic {
+		if (et != null) {
+			error("Unexpected " + tokenString(tk) + " expected " + tokenString(et));
+		} else {
+			error("Unexpected " + tokenString(tk));
+		}
 		return null;
 	}
 
@@ -115,7 +119,7 @@ class Lexer {
 		}
 
 		if (t != tk && !std.Type.enumEq(t, tk))
-			unexpected(t);
+			unexpected(t, tk);
 	}
 
 	function isWhiteSpace( t : Token ) {
