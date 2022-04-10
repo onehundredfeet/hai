@@ -2,10 +2,17 @@ package ;
 
 import htn.Parser;
 import htn.ExampleHTN;
+import htn.Operator;
 
 @:build( htn.macro.HTNBuilder.build( "src/htn/example.htn"))
 class LocalExampleHTN {
     public function new() {}
+
+    @:operator("op1")
+    function op1() : OperatorResult {
+        trace("Operator 1:");
+        return OperatorResult.Running;
+    }
 }
 
 class TestHTN {

@@ -1,5 +1,7 @@
 package htn;
 
+import htn.Operator;
+
 @:enum abstract BranchState(Int) from Int to Int {
     var None = 0;
     var Expanding = 1;
@@ -138,15 +140,63 @@ class ExampleHTN {
         return BranchState.Failed;
     }
 
+    public function execute() {
+        _concretePlan.reverse();
+        var last = _concretePlan.length - 1;
+        
+        if (last < 0) return ;
+        beginOperator( _concretePlan[last] );
+    }
+
+    function beginOperator(op : Int) {
+        switch(op) {
+            case O_OPERATOR1: myOperator1_start();
+            case O_OPERATOR2: myOperator2_start(0.);
+            default: throw('Unknown operator ${op}');
+        }
+    }
+    public function tick() : OperatorResult {
+        var last = _concretePlan.length - 1;
+        
+        if (last < 0) return OperatorResult.Completed;
+
+        var status = OperatorResult.Completed;
+        while (last >= 0 && status == OperatorResult.Completed) {
+            switch(_concretePlan[last]) {
+                case O_OPERATOR1: status = myOperator1();
+                case O_OPERATOR2:status = myOperator2(0.);
+                default: throw('Unknown operator ${_concretePlan[last]}');
+            }
+            if (status == OperatorResult.Completed) {
+                _concretePlan.pop();
+                last--;
+
+                if (last >= 0){
+                    beginOperator( _concretePlan[last] );
+                }
+            }
+        }
+        return status;
+    }
+
     // User class
-    @:operator(O_OPERATOR1)
-    function myOperator1() {
+    @:tick(O_OPERATOR1)
+    function myOperator1() : OperatorResult{
+        return OperatorResult.Running;
+    }
+
+    @:tick(O_OPERATOR2)
+    function myOperator2(parameter : Float) : OperatorResult {
+        return OperatorResult.Running;
+    }
+
+    @:begin(O_OPERATOR1)
+    function myOperator1_start() {
 
     }
 
-    @:operator(O_OPERATOR2)
-    function myOperator2(parameter : Float) {
-
+    @:begin(O_OPERATOR2)
+    function myOperator2_start(parameter : Float)  {
     }
 }
 

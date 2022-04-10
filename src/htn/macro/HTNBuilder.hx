@@ -10,6 +10,8 @@ using haxe.macro.MacroStringTools;
 using StringTools;
 using Lambda;
 
+import sm.tools.MacroTools;
+
 class HTNBuilder {
 	static function getExpressionType(et:ExpressionType) {
 		switch (et) {
@@ -25,8 +27,8 @@ class HTNBuilder {
 		return null;
 	}
 
-	static function getBinOp(op:String) : Binop{
-		return switch(op) {
+	static function getBinOp(op:String):Binop {
+		return switch (op) {
 			case "+": return Binop.OpAdd;
 			case "-": return Binop.OpSub;
 			case "*": return Binop.OpMult;
@@ -39,7 +41,7 @@ class HTNBuilder {
 			case "<=": return Binop.OpLte;
 			case "=": return Binop.OpEq;
 			case "==": return Binop.OpEq;
-			default: 
+			default:
 				Context.error('Unknown operator ${op}', Context.currentPos());
 		}
 	}
@@ -54,8 +56,6 @@ class HTNBuilder {
 		}
 	}
 
-
-
 	static function getBooleanExpression(be:BooleanExpression) {
 		//		trace('BE: ${be}');
 		return switch (be) {
@@ -66,8 +66,45 @@ class HTNBuilder {
 		}
 	}
 
+	static function cleanIdentifier(s:String):String {
+		if (s.startsWith("A_")) {
+			return s.substr(2).toUpperCase();
+		}
+		if (s.startsWith("O_")) {
+			return s.substr(2).toUpperCase();
+		}
+		return s.toUpperCase();
+	}
+
+	static function addActions(map:Map<String, Array<Field>>, meta:Array<Array<Expr>>, f:Field) {
+		if (meta == null)
+			return;
+		for (se in meta) {
+			for (p in se) {
+				var state = Exprs.getIdent(p);
+
+				if (state.isSuccess()) {
+					var stateName = cleanIdentifier(state.sure());
+					if (!map.exists(stateName))
+						map[stateName] = new Array<Field>();
+					map[stateName].push(f);
+				}
+			}
+		}
+	}
+
 	static function generate(ast:Array<Declaration>):Array<Field> {
 		var fields = Context.getBuildFields();
+
+		var metaMap = new Map<String, Map<String, Array<Array<Expr>>>>();
+		fields.map((x) -> {
+			if (x.kind.match(FFun(_))) {
+				var y = x.meta.toMap();
+				if (y.exists(":operator")) {
+					metaMap.set(x.name, y);
+				}
+			}
+		});
 		var mp = new haxe.macro.Printer();
 		var constants = ast.filter((x) -> switch (x) {
 			case DVariable(kind, _, _, _):
@@ -158,7 +195,7 @@ class HTNBuilder {
 			var switch_block = ast.map((x) -> switch (x) {
 				case DOperator(name, parameters, condition, effects):
 					var fn = macro $i{"resolve_" + name};
-					var unwinds = effects.map( (x) -> {
+					var unwinds = effects.map((x) -> {
 						var varIdent = macro $i{x.state};
 						return macro $varIdent = _effectStackValue.pop();
 					});
@@ -192,13 +229,6 @@ class HTNBuilder {
 
 		// accessors
 		{
-			/*
-				inline function setEnemyRange( v : Float ) {
-					_effectStackValue.push(enemyRange);
-					enemyRange = v;
-				}
-			 */
-
 			function makeSetter(name:String, type:ExpressionType) {
 				var ident = macro $i{name};
 				var body = macro {
@@ -227,10 +257,10 @@ class HTNBuilder {
 
 		// Resolve functions
 		{
-			function makeOperator(name:String, parameters:Array<Parameter>, condition:BooleanExpression, effects:Array<Effect>) {
+			function makeOperatorSim(name:String, parameters:Array<Parameter>, condition:BooleanExpression, effects:Array<Effect>) {
 				var ident = macro $i{name};
 
-				trace ('Effects: ${effects}');
+				trace('Effects: ${effects}');
 				var effectsExpr = effects.map((x) -> {
 					trace('Effect: ${x}');
 					//                        var targetIdent = macro $i{x.state};
@@ -240,14 +270,14 @@ class HTNBuilder {
 				});
 
 				/*
-							
-							if (enemyVisible && enemyVisible) {
-								setEnemyRange(enemyRange + val_f);
-								myOperator2(val_f);
-								return concreteSuccess(O_OPERATOR2);
-							}
 
-							return BranchState.Failed;
+					if (enemyVisible && enemyVisible) {
+						setEnemyRange(enemyRange + val_f);
+						myOperator2(val_f);
+						return concreteSuccess(O_OPERATOR2);
+					}
+
+					return BranchState.Failed;
 				 */
 
 				var cond = condition != null ? getBooleanExpression(condition) : macro true;
@@ -275,7 +305,6 @@ class HTNBuilder {
 
 				for (m in methods) {
 					// {name : String, condition : BooleanExpression, subtasks : Array<SubTask>}
-
 					var se = m.subtasks.map((x) -> {
 						var decl = declarationTable.get(x.name);
 						if (decl == null)
@@ -324,7 +353,7 @@ class HTNBuilder {
 
 			fields = fields.concat(ast.map((x) -> switch (x) {
 				case DAbstract(name, methods): makeResolve(name, methods);
-				case DOperator(name, parameters, condition, effects): makeOperator(name, parameters, condition, effects);
+				case DOperator(name, parameters, condition, effects): makeOperatorSim(name, parameters, condition, effects);
 				default: null;
 			}).filter((x) -> x != null));
 		}
@@ -356,6 +385,98 @@ class HTNBuilder {
 					.func(["task".toArg(macro:Int), "maxDepth".toArg(macro:Int, false, 99999.toExpr())], macro:BranchState, null, false)),
 				pos: Context.currentPos()
 			});
+		}
+
+		{
+			var switchBlock = new Array<Case>();
+			var switchExpr = ESwitch( macro op, switchBlock,null).at();
+
+			// beginOperator
+			fields.push({
+				name: "beginOperator",
+				doc: null,
+				meta: [],
+				access: [AInline],
+				kind: FFun(switchExpr.func(["op".toArg(macro:Int)], null, null, false)),
+				pos: Context.currentPos()
+			});
+		}
+		// Execute
+		fields.push(makeField("execute", [APublic], (macro {
+			_concretePlan.reverse();
+			var last = _concretePlan.length - 1;
+			if (last < 0)
+				return;
+			beginOperator(_concretePlan[last]);
+		}).func([], null, null, false)));
+
+		{
+			var switchBlock = new Array<Case>();
+			var switchExpr = ESwitch(macro _concretePlan[last], switchBlock, null).at();
+			// Tick
+			fields.push(makeField("tick", [APublic], (macro {
+				var last = _concretePlan.length - 1;
+				if (last < 0)
+					return OperatorResult.Completed;
+				var status = OperatorResult.Completed;
+				while (last >= 0 && status == OperatorResult.Completed) {
+					// switch goes here
+					$switchExpr;
+					if (status == OperatorResult.Completed) {
+						_concretePlan.pop();
+						last--;
+
+						if (last >= 0) {
+							beginOperator(_concretePlan[last]);
+						}
+					}
+				}
+				return status;
+			}).func([], macro:OperatorResult, null, false)));
+		}
+		/*
+			public function tick() : OperatorResult {
+				var last = _concretePlan.length - 1;
+				
+				if (last < 0) return OperatorResult.Completed;
+
+				var status = OperatorResult.Completed;
+				while (last >= 0 && status == OperatorResult.Completed) {
+					switch(_concretePlan[last]) {
+						case O_OPERATOR1: status = myOperator1();
+						case O_OPERATOR2:status = myOperator2(0.);
+						default: throw('Unknown operator ${_concretePlan[last]}');
+					}
+					if (status == OperatorResult.Completed) {
+						_concretePlan.pop();
+						last--;
+
+						if (last >= 0){
+							beginOperator( _concretePlan[last] );
+						}
+					}
+				}
+				return status;
+			}
+
+		 */
+
+		// Execution
+		{
+			function makeOperatorExecution(name) {
+				for (f in metaMap.keyValueIterator()) {
+					var x = f.value.get(":operator");
+					if (x != null) {
+						for (y in x) {
+							for (z in y) {
+								if (getStringValue(z).toUpperCase() == name.toUpperCase()) {
+									trace('Found operator ${f.key}');
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 
 		{

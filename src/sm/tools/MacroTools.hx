@@ -5,6 +5,7 @@ package sm.tools;
 
 import haxe.macro.Expr;
 using tink.MacroApi;
+import haxe.macro.Context;
 
  function exprConstString(s:String) : Expr{
     return Exprs.at(EConst(CString(s)));
@@ -46,5 +47,34 @@ function exprConstInt(i:Int) : Expr{
 
 function exprFor(ivar:Expr, len:Expr, expr:Expr) : Expr{
     return macro for ($ivar in 0...$len) $expr;
+}
+
+function getStringValue(e:Expr):String {
+    var str = e.getString();
+    if (str.isSuccess())
+        return str.sure();
+    switch (e.expr) {
+        case EConst(c):
+            switch (c) {
+                case CString(s, kind): return s;
+                case CIdent(s): return s;
+                case CFloat(f): return f;
+                case CInt(v): return v;
+                default:
+            }
+        default:
+    }
+    return null;
+}
+
+function makeField(name, access, func : Function) : Field{
+     return {
+        name:name,
+        doc: null,
+        meta: [],
+        access: access,
+        kind: FFun(func),
+        pos: Context.currentPos()
+    };
 }
 #end
