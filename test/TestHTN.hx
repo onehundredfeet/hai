@@ -15,9 +15,13 @@ class LocalExampleHTN {
     }
 
     @:begin(op1)
-    function op1_Begin() : OperatorResult {
-        trace("Operator 1:");
-        return OperatorResult.Running;
+    function op1_Begin() {
+        trace("Begin Operator 1:");
+    }
+
+    //Called by HTN source
+    function testCall(x : Float) {
+
     }
 }
 

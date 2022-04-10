@@ -153,7 +153,7 @@ class HTNBuilder {
 		ast.map((x) -> switch (x) {
 			case DVariable(kind, name, type, value): declarationTable.set(name, x);
 			case DAbstract(name, methods): declarationTable.set(name, x);
-			case DOperator(name,  condition, effects, parameters): declarationTable.set(name, x);
+			case DOperator(name,  _, _, _, _): declarationTable.set(name, x);
 		});
 
 		fields = fields.concat(ast.map((x) -> switch (x) {
@@ -193,7 +193,7 @@ class HTNBuilder {
 					kind: FVar(macro:Int, (abstractCount++).toExpr()),
 					pos: Context.currentPos()
 				};
-			case DOperator(name, condition, effects,  parameters):
+			case DOperator(name, _, _,  _, _):
 				{
 					name: "O_" + name.toUpperCase(),
 					doc: null,
@@ -226,7 +226,7 @@ class HTNBuilder {
 		// unwind
 		{
 			var switch_block = ast.map((x) -> switch (x) {
-				case DOperator(name,  condition, effects, parameters):
+				case DOperator(name,  condition, effects, _, _):
 					var fn = macro $i{"resolve_" + name};
 					var unwinds = effects.map((x) -> {
 						var varIdent = macro $i{x.state};
@@ -290,7 +290,7 @@ class HTNBuilder {
 
 		// Resolve functions
 		{
-			function makeOperatorSim(name:String, parameters:Array<Parameter>, condition:BooleanExpression, effects:Array<Effect>) {
+			function makeOperatorSim(name:String,  condition:BooleanExpression, effects:Array<Effect>) {
 				var ident = macro $i{name};
 
 				trace('Effects: ${effects}');
@@ -375,7 +375,7 @@ class HTNBuilder {
 
 			fields = fields.concat(ast.map((x) -> switch (x) {
 				case DAbstract(name, methods): makeResolve(name, methods);
-				case DOperator(name, condition, effects, parameters): makeOperatorSim(name, parameters, condition, effects);
+				case DOperator(name, condition, effects, _, _): makeOperatorSim(name, condition, effects);
 				default: null;
 			}).filter((x) -> x != null));
 		}
@@ -409,9 +409,10 @@ class HTNBuilder {
 			});
 		}
 
+		// Begin
 		{
 			var switchBlock = ast.map((x) -> switch (x) {
-				case DOperator(name, condition, effects,  parameters): beginMap.exists(name) ? {
+				case DOperator(name, condition, effects,  _, _): beginMap.exists(name) ? {
 					var c : Case = {
 						values: [macro $i{"O_" + name.toUpperCase()}],
 						expr: EBlock(beginMap.get(name).map( 
@@ -463,7 +464,7 @@ class HTNBuilder {
 				return [];
 			}
 			var switchBlock = ast.map((x) -> switch (x) {
-				case DOperator(name,  condition, effects, parameters): operatorMap.exists(name) ? {
+				case DOperator(name,  condition, effects, parameters, calls): operatorMap.exists(name) ? {
 					var c : Case = {
 						values: [macro $i{"O_" + name.toUpperCase()}],
 						expr: EBlock(operatorMap.get(name).map( 
@@ -472,7 +473,11 @@ class HTNBuilder {
 								// TODO [RC] - Make multi-call 
 								macro status = $call;
 							}
-						 )).at()
+						 ).concat(calls.map((x) -> 
+							(macro $i{x.name}).call(x.arguments.map( (arg) -> getNumericExpression(arg) ))
+						 ))
+						 
+						 ).at()
 					};
 					c;
 				}: null;
