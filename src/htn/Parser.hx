@@ -227,8 +227,9 @@ class Parser extends Lexer {
     }
 
     function parseMethod(name:String, alignment) : Method {
-        ensure(TColon);
-        var conditions = parseBooleanExpression();
+
+		var conditions = maybe(TColon) ? parseBooleanExpression() : BELiteral(true);
+
         ensure(TNewLine);
 
         var subAlign = 0;

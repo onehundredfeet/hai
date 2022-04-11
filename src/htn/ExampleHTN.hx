@@ -2,14 +2,7 @@ package htn;
 
 import htn.Operator;
 
-@:enum abstract BranchState(Int) from Int to Int {
-    var None = 0;
-    var Expanding = 1;
-    var Paused = 2;
-    var Success = 3;
-    var Failed = 4;
-    var Incomplete = 5;
-}
+
 
 class ExampleHTN {
     static inline final PI : Float = 3;

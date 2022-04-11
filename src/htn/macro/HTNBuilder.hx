@@ -93,7 +93,7 @@ class HTNBuilder {
 		}
 	}
 
-	static function generate(ast:Array<Declaration>):Array<Field> {
+	static function generate(ast:Array<Declaration>, debug:Bool):Array<Field> {
 		var fields = Context.getBuildFields();
 
 		// Build meta data
@@ -262,9 +262,12 @@ class HTNBuilder {
 
 		// accessors
 		{
-			function makeSetter(name:String, type:ExpressionType) {
+			function makeSetter(name:String, type:ExpressionType, debug:Bool) {
 				var ident = macro $i{name};
+
+				var debugTrace = debug ? macro trace("Setting " + $e{name.toExpr()} + " to " + v) : macro {};
 				var body = macro {
+					$debugTrace;
 					_effectStackValue.push($ident);
 					$ident = v;
 				};
@@ -280,8 +283,8 @@ class HTNBuilder {
 			fields = fields.concat(ast.map((x) -> switch (x) {
 				case DVariable(kind, name, type, value):
 					switch (kind) {
-						case VKParameter: makeSetter(name, type);
-						case VKLocal: makeSetter(name, type);
+						case VKParameter: makeSetter(name, type, debug);
+						case VKLocal: makeSetter(name, type, debug);
 						default: null;
 					}
 				default: null;
@@ -342,6 +345,8 @@ class HTNBuilder {
 						return macro $call == BranchState.Success;
 					});
 
+					//Folding and && nesting need to work oppositely
+					se.reverse();
 					var resolves = se.fold((x, y) -> macro $x && $y, macro true);
 
 					var cond = getBooleanExpression(m.condition);
@@ -351,7 +356,11 @@ class HTNBuilder {
 					methodBlocks.push(expr);
 				}
 
+				var resolveMessage = ("Resolving " + name).toExpr();
+				var resolveTrace  = debug ? macro trace($resolveMessage + " : d " + depth): macro {};
+
 				var body = macro {
+					$resolveTrace;
 					var next_depth = depth - 1;
 					if (next_depth <= 0)
 						return BranchState.Incomplete;
@@ -360,6 +369,7 @@ class HTNBuilder {
 
 					$b{methodBlocks};
 
+					$e{ (debug ? macro trace ("Unwinding...") : macro {} )};
 					unwind(concrete_progress);
 					return BranchState.Failed;
 				};
@@ -437,14 +447,42 @@ class HTNBuilder {
 				pos: Context.currentPos()
 			});
 		}
-		// Execute
-		fields.push(makeField("execute", [APublic], (macro {
-			_concretePlan.reverse();
-			var last = _concretePlan.length - 1;
-			if (last < 0)
-				return;
-			beginOperator(_concretePlan[last]);
-		}).func([], null, null, false)));
+		{
+			var debugTrace = debug ?macro 
+			{
+				trace("Executing plan:");
+//				_concretePlan.reverse();
+				for( o in _concretePlan ) trace('\tOperator ${getOperatorName(o)}');
+//				_concretePlan.reverse();
+			}
+			 : macro {};
+			// Execute
+			fields.push(makeField("execute", [APublic], (macro {
+				$debugTrace;
+
+				_concretePlan.reverse();
+				var last = _concretePlan.length - 1;
+				if (last < 0)
+					return;
+				beginOperator(_concretePlan[last]);
+			}).func([], null, null, false)));
+		}
+		{
+			var nameCases = ast.map((x) -> switch (x) {
+				case DOperator(name,  condition, effects, parameters, calls):  {
+					var c : Case = {
+						values: [macro $i{"O_" + name.toUpperCase()}],
+						expr: macro $e{name.toExpr()}
+					};
+					c;
+				};
+				default: null;
+			}).filter((x) -> x != null);
+			var nameSwitch = ESwitch( macro op, nameCases, "".toExpr()).at();
+			// Operator name
+			fields.push(makeField("getOperatorName", [APublic], (macro return $nameSwitch).func(["op".toArg(macro:Int)], macro :String, null, false)));
+		}
+
 
 		// Tick
 		{
@@ -485,6 +523,21 @@ class HTNBuilder {
 			}).filter((x) -> x != null);
 
 			var switchExpr = ESwitch(macro _concretePlan[last], switchBlock, null).at();
+
+			var tickDebugBlock = [];
+
+			if (debug) {
+				tickDebugBlock = ast.map((x) -> switch (x) {
+					case DVariable(kind, name, type, value):
+						switch (kind) {
+							case VKConstant: macro trace("Constant " + $e{name.toExpr()} + " " + $i{name});
+							case VKParameter: macro trace("Parameter " + $e{name.toExpr()} + " " + $i{name});
+							case VKLocal: macro trace("Local " + $e{name.toExpr()} + " " + $i{name});
+						}
+					default: null;
+				}).filter((x) -> x != null);
+			}
+			var tickDebug = debug ?  macro $b{tickDebugBlock}: macro {};
 			fields.push(makeField("tick", [APublic], (macro {
 				var last = _concretePlan.length - 1;
 				if (last < 0)
@@ -502,6 +555,7 @@ class HTNBuilder {
 						}
 					}
 				}
+				$tickDebug;
 				return status;
 			}).func([], macro:OperatorResult, null, false)));
 		}
@@ -509,7 +563,10 @@ class HTNBuilder {
 
 
 		{
+			var debugBlock = debug ? macro trace('Adding operator ${getOperatorName(task)}') : macro {};
+
 			var bodyBlock = macro {
+				$debugBlock;
 				_concretePlan.push(task);
 				return BranchState.Success;
 			};
@@ -535,7 +592,7 @@ class HTNBuilder {
 		return fields;
 	}
 
-	public static function build(path:String):Array<Field> {
+	public static function build(path:String, debug = false):Array<Field> {
 		var parse = new Parser();
 
 		var content = try {
@@ -547,7 +604,7 @@ class HTNBuilder {
 
 		try {
 			var ast = parse.parseFile(path, new haxe.io.BytesInput(content));
-			return generate(ast);
+			return generate(ast, debug);
 		} catch (msg:String) {
 			Context.error('Parse error ${msg}', Context.currentPos());
 			return null;
