@@ -1,0 +1,50 @@
+
+const PI : Float = 3
+param DASH_RANGE : Float
+
+param enemyRange : Float
+var enemyVisible : Bool
+#var agentStatemachine : MyStateMachine
+
+
+sequence seq0
+    stepA
+    stepB : enemyRange > DASH_RANGE
+    sequence seq0_0
+        stepC
+        stepD
+    selection0
+    repeat(inf) stepE
+
+select selection0
+    method0
+    method1
+    method2
+
+parallel par0
+    thread0
+    thread1
+    thread2
+
+operator op1 
+    parameter : enemyRange
+    enemyRange = enemyRange + 1
+    testCall(enemyRange)
+
+operator op2 
+    enemyRange = enemyRange + 2
+
+operator op3
+    enemyRange = enemyRange + 3
+
+#var agentStatemachineEmbed : StateMachine
+#    A(a) -> B,
+#    A(b) -> C,
+#    B(b) -> C
+
+#var agentStatemachineEmbedHierarchical : StateMachine
+#    A(a) -> B,
+#    A(b) -> C,
+#    B(b) -> C,
+#    B(entry) -> B.default,
+#    B.default(c) -> B.next
