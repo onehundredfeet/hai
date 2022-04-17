@@ -1,4 +1,4 @@
-package sm.tools;
+package ai.tools;
 
 import haxe.ds.Map;
 using Lambda;

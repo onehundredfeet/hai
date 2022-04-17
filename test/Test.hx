@@ -1,7 +1,7 @@
 package;
 
 
-@:build(sm.macro.StateMachineBuilder.build("test/test.vdx", "ServerClientState", false, true, false))
+@:build(ai.sm.macro.StateMachineBuilder.build("test/test.vdx", "ServerClientState", false, true, false))
 class StateBuildTest {
     var a : Int = 0;
     var b : Int = 0;

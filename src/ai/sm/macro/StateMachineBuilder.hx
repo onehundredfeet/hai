@@ -1,4 +1,4 @@
-package sm.macro;
+package ai.sm.macro;
 
 import tink.core.Pair;
 #if macro
@@ -8,14 +8,14 @@ import tink.macro.Exprs.VarDecl;
 import haxe.macro.MacroStringTools;
 import tink.macro.Ops.Unary;
 import tink.macro.ConstParam;
-import sm.tools.StateMachineModel;
-import sm.tools.Visio;
+import ai.tools.StateMachineModel;
+import ai.tools.Visio;
 import haxe.macro.Printer;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import tink.macro.Member;
-import sm.tools.StateXMLTools;
-import sm.tools.MacroTools;
+import ai.tools.StateXMLTools;
+import ai.macro.MacroTools;
 
 using tink.MacroApi;
 using StringTools;

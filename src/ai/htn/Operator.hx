@@ -1,4 +1,4 @@
-package htn;
+package ai.htn;
 
 @:enum
 abstract OperatorResult(Int) from Int to Int {

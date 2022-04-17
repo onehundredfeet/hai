@@ -1,0 +1,6 @@
+--class-path src
+--class-path test
+--library tink_macro
+-lib haxe-strings
+-hl bin/htn.hl
+--main TestBT

@@ -1,8 +1,8 @@
-package htn.macro;
+package ai.htn.macro;
 
 #if macro
 import haxe.macro.Expr;
-import htn.Parser;
+import ai.htn.Parser;
 import haxe.macro.Context;
 
 using tink.MacroApi;
@@ -10,7 +10,7 @@ using haxe.macro.MacroStringTools;
 using StringTools;
 using Lambda;
 
-import sm.tools.MacroTools;
+import ai.macro.MacroTools;
 
 class HTNBuilder {
 	static function getExpressionType(et:ExpressionType) {

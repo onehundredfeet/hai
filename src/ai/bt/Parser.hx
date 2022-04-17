@@ -1,6 +1,6 @@
-package htn;
+package ai.bt;
+import ai.tools.Lexer;
 
-var x : haxe.macro.Expr;
 
 
 enum VariableKind {
@@ -59,7 +59,7 @@ enum Declaration {
     DOperator(name : String,  condition : BooleanExpression, effects : Array<Effect>, parameters:Array<Parameter>,calls:Array<Call>);
 }
 
-
+#if macro
 class Parser extends Lexer {
 	
 	var types:Map<String,ExpressionType>;
@@ -693,3 +693,5 @@ class Parser extends Lexer {
 #end
 	
 }
+
+#end

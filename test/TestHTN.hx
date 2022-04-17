@@ -1,10 +1,10 @@
 package ;
 
-import htn.Parser;
-import htn.ExampleHTN;
-import htn.Operator;
+import ai.htn.Parser;
+import test.ExampleHTN;
+import ai.htn.Operator;
 
-@:build( htn.macro.HTNBuilder.build( "src/htn/example.htn", true))
+@:build( ai.htn.macro.HTNBuilder.build( "test/example.htn", true))
 class LocalExampleHTN {
     public function new() {}
 

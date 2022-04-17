@@ -1,6 +1,6 @@
-package sm.tools;
-import sm.tools.StateXMLTools;
-import sm.tools.GraphModel;
+package ai.tools;
+import ai.tools.StateXMLTools;
+import ai.tools.GraphModel;
 import tink.core.Pair;
 using Lambda;
 

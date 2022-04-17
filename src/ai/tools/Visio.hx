@@ -1,6 +1,6 @@
-package sm.tools;
-import sm.tools.*;
-import sm.tools.StateXMLTools;
+package ai.tools;
+import ai.tools.*;
+import ai.tools.StateXMLTools;
 
 using Lambda;
 

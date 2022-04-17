@@ -1,4 +1,5 @@
-package htn;
+package ai.tools;
+
 
 private enum Token {
 	TEof;
@@ -21,6 +22,7 @@ private enum Token {
 	// White Space
 	TTab;
 	TSpace;
+	TQuestion;
 	TNewLine;
 }
 
@@ -68,6 +70,7 @@ class Lexer {
 			case TNewLine: "<line>";
 			case TSpace: "<space>";
 			case TPeriod: ".";
+			case TQuestion: "?";
 			case TNumber(value): value;
 		}
 	}
@@ -353,7 +356,7 @@ class Lexer {
 					return TString(readString(39));
 				case 34: // double quote
 					return TString(readString(34));
-				//			case 63: return TQuestion;
+				case 63: return TQuestion;
 				//			case 58: return TDoubleDot;
 				case '='.code:
 					char = readChar();
@@ -485,3 +488,4 @@ class Lexer {
 		return {file: fileName, line: line, pos: pmin};
 	}
 }
+

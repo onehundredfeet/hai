@@ -1,7 +1,7 @@
-package sm.tools;
+package ai.tools;
 
 import tink.core.Pair;
-import sm.tools.StateXMLTools;
+import ai.tools.StateXMLTools;
 using Lambda;
 
 class GraphModel {
