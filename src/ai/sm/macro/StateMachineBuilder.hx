@@ -72,12 +72,12 @@ class StateMachineBuilder {
 		}
 		var count = 0;
 		for (ss in model.stateNames) {
-			cb.addMember(makeFinalInt("S_" + ss, count++, macro : sm.State ));
+			cb.addMember(makeFinalInt("S_" + ss, count++, macro : ai.sm.State ));
 			//            trace("State name:" + ss);
 		}
 		count = 0;
 		for (ss in model.transitionNames) {
-			cb.addMember(makeFinalInt("T_" + ss, count++, macro : sm.Transition ));
+			cb.addMember(makeFinalInt("T_" + ss, count++, macro : ai.sm.Transition ));
 			//            trace("State name:" + ss);
 		}
 	}
@@ -485,9 +485,9 @@ class StateMachineBuilder {
 				
 				if (allowSingle) {
 					var ct : ComplexType = fun.args[0].type;
-					if (ComplexTypeTools.toString(fun.args[0].type ) == "sm.State") {
+					if (ComplexTypeTools.toString(fun.args[0].type ) == "ai.sm.State") {
 						return Exprs.call(Exprs.at(EConst(CIdent(f.name))), [a]);
-					} else if (ComplexTypeTools.toString(fun.args[0].type ) == "sm.Transition") {
+					} else if (ComplexTypeTools.toString(fun.args[0].type ) == "ai.sm.Transition") {
 						return Exprs.call(Exprs.at(EConst(CIdent(f.name))), [b]);
 					}
 				}
