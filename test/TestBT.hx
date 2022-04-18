@@ -1,13 +1,12 @@
 package ;
+import ai.tools.AST;
+import ai.common.TaskResult;
 
-import ai.htn.Parser;
-import test.ExampleHTN;
-import ai.htn.Operator;
-
-@:build( ai.htn.macro.HTNBuilder.build( "test/example.htn", true))
-class LocalExampleHTN {
+@:build( ai.bt.macro.BTBuilder.build( "test/example.bt", true))
+class LocalExampleBT {
     public function new() {}
 
+    /*
     @:tick(op1)
     function op1(parameter : Float) : TaskResult {
         trace("Operator 1:");
@@ -35,9 +34,10 @@ class LocalExampleHTN {
     function testCall(x : Float) {
         trace ("Test Call");
     }
+    */
 }
 
-class TestHTN {
+class TestBT {
 
     static function generate( ast : Array<Declaration> ) {
         for(d in ast) {
@@ -46,7 +46,8 @@ class TestHTN {
     }
 
     public static function main() {
-        var x = new LocalExampleHTN();
+        var x = new LocalExampleBT();
+        /*
         var y = new ExampleHTN();
 
         
@@ -63,7 +64,7 @@ class TestHTN {
         var res = x.tick();
         var res = x.tick();
         var res = x.tick();
-        
+        */
         /*
         var parse = new Parser();
         var file = "src/htn/example.htn";

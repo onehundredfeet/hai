@@ -1,9 +1,10 @@
-package ai.htn.macro;
+package ai.bt.macro;
 
 #if macro
 import haxe.macro.Expr;
-import ai.htn.Parser;
+import ai.bt.Parser;
 import haxe.macro.Context;
+import ai.tools.AST;
 
 using tink.MacroApi;
 using haxe.macro.MacroStringTools;
@@ -12,7 +13,7 @@ using Lambda;
 
 import ai.macro.MacroTools;
 
-class HTNBuilder {
+class BTBuilder {
 	static function getExpressionType(et:ExpressionType) {
 		switch (et) {
 			case ETFloat:
@@ -154,6 +155,7 @@ class HTNBuilder {
 			case DVariable(kind, name, type, value): declarationTable.set(name, x);
 			case DAbstract(name, methods): declarationTable.set(name, x);
 			case DOperator(name,  _, _, _, _): declarationTable.set(name, x);
+            case DSequence(name, _, _, _, _, _):declarationTable.set(name, x);
 		});
 
 		fields = fields.concat(ast.map((x) -> switch (x) {
@@ -205,6 +207,7 @@ class HTNBuilder {
 			default: null;
 		}).filter((x) -> x != null));
 
+        #if false
 		fields.push({
 			name: "_effectStackValue",
 			doc: null,
@@ -541,12 +544,12 @@ class HTNBuilder {
 			fields.push(makeField("tick", [APublic], (macro {
 				var last = _concretePlan.length - 1;
 				if (last < 0)
-					return TaskResult.Completed;
-				var status = TaskResult.Completed;
-				while (last >= 0 && status == TaskResult.Completed) {
+					return ai.common.TaskResult.Completed;
+				var status = ai.common.TaskResult.Completed;
+				while (last >= 0 && status == ai.common.TaskResult.Completed) {
 					// switch goes here
 					$switchExpr;
-					if (status == TaskResult.Completed) {
+					if (status == ai.common.TaskResult.Completed) {
 						_concretePlan.pop();
 						last--;
 
@@ -557,7 +560,7 @@ class HTNBuilder {
 				}
 				$tickDebug;
 				return status;
-			}).func([], macro:TaskResult, null, false)));
+			}).func([], macro:ai.common.TaskResult, null, false)));
 		}
 
 
@@ -580,7 +583,7 @@ class HTNBuilder {
 				pos: Context.currentPos()
 			});
 		}
-
+#end
 		for (d in ast) {
 			trace('${d}');
 		}

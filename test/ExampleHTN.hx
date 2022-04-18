@@ -148,19 +148,19 @@ class ExampleHTN {
             default: throw('Unknown operator ${op}');
         }
     }
-    public function tick() : OperatorResult {
+    public function tick() : TaskResult {
         var last = _concretePlan.length - 1;
         
-        if (last < 0) return OperatorResult.Completed;
+        if (last < 0) return TaskResult.Completed;
 
-        var status = OperatorResult.Completed;
-        while (last >= 0 && status == OperatorResult.Completed) {
+        var status = TaskResult.Completed;
+        while (last >= 0 && status == TaskResult.Completed) {
             switch(_concretePlan[last]) {
                 case O_OPERATOR1: status = myOperator1();
                 case O_OPERATOR2:status = myOperator2(0.);
                 default: throw('Unknown operator ${_concretePlan[last]}');
             }
-            if (status == OperatorResult.Completed) {
+            if (status == TaskResult.Completed) {
                 _concretePlan.pop();
                 last--;
 
@@ -174,13 +174,13 @@ class ExampleHTN {
 
     // User class
     @:tick(O_OPERATOR1)
-    function myOperator1() : OperatorResult{
-        return OperatorResult.Running;
+    function myOperator1() : TaskResult{
+        return TaskResult.Running;
     }
 
     @:tick(O_OPERATOR2)
-    function myOperator2(parameter : Float) : OperatorResult {
-        return OperatorResult.Running;
+    function myOperator2(parameter : Float) : TaskResult {
+        return TaskResult.Running;
     }
 
     @:begin(O_OPERATOR1)
