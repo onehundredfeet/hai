@@ -8,9 +8,10 @@ var enemyVisible : Bool
 
 
 #serial versions
-sequence seq0 :restart :continue :loop
+sequence seq0 :restart
     stepA
     ?enemyRange > DASH_RANGE
+    stepAC
 
 first seq1 :restart
     stepA
@@ -26,13 +27,29 @@ one seq3
     stepB
 
 sequence seq4
-    invert(stepCC)
+    succeed(invert(stepCC))
     invert(stepCD) ? enemyRange > DASH_RANGE
     ?enemyRange > DASH_RANGE
     stepB ? enemyRange > DASH_RANGE
     sequence seq4_0
         stepC
         stepD
-    selection0
+    seq1
     stepE
+
+action stepA
+
+action stepAC : enemyRange > DASH_RANGE
+
+action stepB
+
+action stepCC
+
+action stepCD
+
+action stepC
+
+action stepD
+
+action stepE
 

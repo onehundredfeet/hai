@@ -251,13 +251,13 @@ class AIParser extends Lexer {
 		return {name: name, arguments: arguments};
 	}
 
-	function parseDeclLine(alignment : Int, declarations : Array<Declaration>):Declaration {
+	function parseDeclLine(alignment:Int, declarations:Array<Declaration>):Declaration {
 		var x = parseDecl(alignment, declarations);
 		ensure(TNewLine);
 		return x;
 	}
 
-	function parseDecl(baseAlignment : Int, declarations : Array<Declaration>):Declaration {
+	function parseDecl(baseAlignment:Int, declarations:Array<Declaration>):Declaration {
 		//        trace ('Parsing decl');
 		switch (next()) {
 			case TId(id):
@@ -304,7 +304,7 @@ class AIParser extends Lexer {
 
 						while (maybe(TColon)) {
 							var flag = ident();
-							switch(flag) {
+							switch (flag) {
 								case "restart": reset = true;
 								case "reset": reset = true;
 								case "continue": continued = true;
@@ -319,6 +319,7 @@ class AIParser extends Lexer {
 						while ((alignment = peekAlignment()) > baseAlignment) {
 							switch (next()) {
 								case TQuestion:
+									trace('Pushing conditional');
 									children.push(BConditional(parseNumericExpression()));
 									ensure(TNewLine);
 								case TId(s):
@@ -326,8 +327,8 @@ class AIParser extends Lexer {
 										returnToken(TId(s));
 
 										var d = parseDecl(alignment, declarations);
-										switch(d) {
-											case DSequence(childName, _,_,_,_,_,_):
+										switch (d) {
+											case DSequence(childName, _, _, _, _, _, _):
 												children.push(BChild(childName, null, []));
 												declarations.push(d);
 											default:
@@ -337,25 +338,25 @@ class AIParser extends Lexer {
 										var decorators = [];
 
 										if (maybe(TPOpen)) {
-											var params = 1;	
+											var params = 1;
 											var ids = [];
 
-											decorators.push({name:s});
-											
+											decorators.push({name: s});
+
 											while (params > 0) {
 												var n = next();
 
-												switch(n) {
+												switch (n) {
 													case TPOpen:
 														params++;
-														decorators.push({name:ids.pop()});
-													case TPClose:params--;
-													case TId(id):ids.push(id);
-													default: unexpected( n );
-
-												}												
+														decorators.push({name: ids.pop()});
+													case TPClose: params--;
+													case TId(id): ids.push(id);
+													default: unexpected(n);
+												}
 											}
-											if (ids.length != 1) error("No task");
+											if (ids.length != 1)
+												error("No task");
 											s = ids.pop();
 
 											decorators.reverse();
@@ -363,7 +364,7 @@ class AIParser extends Lexer {
 										if (maybe(TQuestion)) {
 											expr = parseNumericExpression();
 										}
-										
+
 										children.push(BChild(s, expr, decorators));
 										ensure(TNewLine);
 									}
@@ -407,9 +408,44 @@ class AIParser extends Lexer {
 						}
 
 						return DOperator(name, condition, effects, parameters, calls);
+
+					case "action", "async":
+						var name = ident();
+
+						var condition = null;
+						if (maybe(TColon)) {
+							condition = parseBooleanExpression();
+						}
+
+						ensure(TNewLine);
+
+						var effects = [];
+						var parameters = [];
+						var calls = [];
+						var alignment = 0;
+						while ((alignment = peekAlignment()) > baseAlignment) {
+							switch (next()) {
+								case TId(s):
+									if (maybe(TColon)) {
+										parameters.push(parseParameter(s, alignment));
+										ensure(TNewLine);
+									} else if (maybe(TOp("="))) {
+										effects.push(parseEffect(s, alignment));
+										ensure(TNewLine);
+									} else if (maybe(TPOpen)) {
+										calls.push(parseCall(s, alignment));
+										ensure(TNewLine);
+									}
+								case var x:
+									trace('Something else ${x}');
+							}
+						}
+
+						return DAction(name, id == "async", condition, effects, parameters, calls);
 					default:
 						return unexpected(TId(id));
 				}
+
 			case var tk:
 				return unexpected(tk);
 		}

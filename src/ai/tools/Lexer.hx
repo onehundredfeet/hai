@@ -121,7 +121,10 @@ class Lexer {
 			} 
 		}
 
-		if (t != tk && !std.Type.enumEq(t, tk))
+		if (tk == TNewLine && t == TEof) {
+			returnToken(TEof);
+		}
+		else if (t != tk && !std.Type.enumEq(t, tk))
 			unexpected(t, tk);
 	}
 
@@ -129,12 +132,19 @@ class Lexer {
 		return t == TNewLine || t == TTab || t == TSpace;
 	}
 
-	function maybe(tk, skipWhiteSpace : Bool = true) {
+	function maybe(tk, ignoreEOL = false, skipWhiteSpace : Bool = true) {
 		var rejected = [];
 
 		var t = token();	// oldest token
 		if (skipWhiteSpace) {
 			while (isWhiteSpace(t)) {
+				if (t == TNewLine || t == TEof) {
+					if (tk == TNewLine) {
+						return true;
+					} else {
+						break;
+					}
+				}
 				rejected.push(t);
 				t = token();
 			}	

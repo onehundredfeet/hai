@@ -5,6 +5,7 @@ import haxe.macro.Expr;
 import ai.bt.Parser;
 import haxe.macro.Context;
 import ai.tools.AST;
+import ai.macro.MacroTools;
 
 using tink.MacroApi;
 using haxe.macro.MacroStringTools;
@@ -14,69 +15,6 @@ using Lambda;
 import ai.macro.MacroTools;
 
 class BTBuilder {
-	static function getExpressionType(et:ExpressionType) {
-		switch (et) {
-			case ETFloat:
-				return Context.getType("Float").toComplex();
-			case ETBool:
-				return Context.getType("Bool").toComplex();
-			case ETInt:
-				return Context.getType("Int").toComplex();
-			case ETUser(name):
-				return Context.getType(name).toComplex();
-		}
-		return null;
-	}
-
-	static function getBinOp(op:String):Binop {
-		return switch (op) {
-			case "+": return Binop.OpAdd;
-			case "-": return Binop.OpSub;
-			case "*": return Binop.OpMult;
-			case "/": return Binop.OpDiv;
-			case "&": return Binop.OpBoolAnd;
-			case "&&": return Binop.OpBoolAnd;
-			case ">": return Binop.OpGt;
-			case "<": return Binop.OpLt;
-			case ">=": return Binop.OpGte;
-			case "<=": return Binop.OpLte;
-			case "=": return Binop.OpEq;
-			case "==": return Binop.OpEq;
-			default:
-				Context.error('Unknown operator ${op}', Context.currentPos());
-		}
-	}
-
-	static function getNumericExpression(ne:NumericExpression):haxe.macro.Expr {
-		//		trace('NE: ${ne}');
-		return switch (ne) {
-			case NELiteral(value): EConst(CFloat(value)).at();
-			case NEIdent(name): macro $i{name};
-			case NEBinaryOp(op, left, right): EBinop(getBinOp(op), getNumericExpression(left), getNumericExpression(right)).at();
-			default: Context.error('Unknown numeric expression ${ne}', Context.currentPos());
-		}
-	}
-
-	static function getBooleanExpression(be:BooleanExpression) {
-		//		trace('BE: ${be}');
-		return switch (be) {
-			case BELiteral(isTrue): isTrue ? macro true : macro false;
-			case BEIdent(name): macro $i{name};
-			case BEBinaryOp(op, left, right): EBinop(getBinOp(op), getBooleanExpression(left), getBooleanExpression(right)).at();
-			default: Context.error('Unknown boolean expression ${be}', Context.currentPos());
-		}
-	}
-
-	static function cleanIdentifier(s:String):String {
-		if (s.startsWith("A_")) {
-			return s.substr(2).toUpperCase();
-		}
-		if (s.startsWith("O_")) {
-			return s.substr(2).toUpperCase();
-		}
-		return s.toUpperCase();
-	}
-
 	static function addActions(map:Map<String, Array<Field>>, meta:Array<Array<Expr>>, f:Field) {
 		if (meta == null)
 			return;
@@ -94,73 +32,24 @@ class BTBuilder {
 		}
 	}
 
-	static function generate(ast:Array<Declaration>, debug:Bool):Array<Field> {
-		var fields = Context.getBuildFields();
-
-		// Build meta data
-		var operatorMap = new Map<String,Array<Field>>();
-		var beginMap = new Map<String,Array<Field>>();
-
-		fields.map((x) -> {
-			if (x.kind.match(FFun(_))) {
-				var y = x.meta.toMap();
-				if (y.exists(":tick")) {
-					var opNames = y.get(":tick");
-					for (olist in opNames) {
-						for (o in olist) {
-							var oname = getStringValue(o);
-							trace('Found operator ${oname}');
-
-							var ofields = operatorMap.get(oname);
-							if (ofields == null) {
-								ofields = new Array<Field>();
-								operatorMap.set(oname, ofields);
-							}
-							ofields.push(x);
-						}
-					}
-				}
-				if (y.exists(":begin")) {
-					var opNames = y.get(":begin");
-					for (olist in opNames) {
-						for (o in olist) {
-							var oname = getStringValue(o);
-							trace('Found operator ${oname}');
-
-							var ofields = beginMap.get(oname);
-							if (ofields == null) {
-								ofields = new Array<Field>();
-								beginMap.set(oname, ofields);
-							}
-							ofields.push(x);
-						}
-					}
-				}
-			}
-		});
-
-		var mp = new haxe.macro.Printer();
-		var constants = ast.filter((x) -> switch (x) {
-			case DVariable(kind, _, _, _):
-				kind == VKConstant;
-			default: false;
-		});
-
-		var abstractCount = 0;
-		var operatorCount = 0;
-
+	static function getDeclarationTable(ast:Array<Declaration>) {
 		var declarationTable = new Map<String, Declaration>();
 
 		ast.map((x) -> switch (x) {
 			case DVariable(kind, name, type, value): declarationTable.set(name, x);
 			case DAbstract(name, methods): declarationTable.set(name, x);
-			case DOperator(name,  _, _, _, _): declarationTable.set(name, x);
-            case DSequence(name, _, _, _, _, _):declarationTable.set(name, x);
+			case DOperator(name, _, _, _, _): declarationTable.set(name, x);
+			case DSequence(name, _, _, _, _, _): declarationTable.set(name, x);
+			case DAction(name, _, _, _, _, _): declarationTable.set(name, x);
 		});
 
-		fields = fields.concat(ast.map((x) -> switch (x) {
+		return declarationTable;
+	}
+
+	static function generateVariableFields(ast:Array<Declaration>):Array<Field> {
+		return ast.flatMap((x) -> switch (x) {
 			case DVariable(kind, name, type, value):
-				switch (kind) {
+				var f : Field = switch (kind) {
 					case VKConstant: {
 							name: name,
 							doc: null,
@@ -186,36 +75,151 @@ class BTBuilder {
 							pos: Context.currentPos()
 						};
 				}
-			case DAbstract(name, methods):
-				{
-					name: "A_" + name.toUpperCase(),
-					doc: null,
-					meta: [],
-					access: [AStatic, APublic, AFinal, AInline],
-					kind: FVar(macro:Int, (abstractCount++).toExpr()),
-					pos: Context.currentPos()
-				};
-			case DOperator(name, _, _,  _, _):
-				{
-					name: "O_" + name.toUpperCase(),
-					doc: null,
-					meta: [],
-					access: [AStatic, APublic, AFinal, AInline],
-					kind: FVar(macro:Int, (operatorCount++).toExpr()),
-					pos: Context.currentPos()
-				};
-			default: null;
-		}).filter((x) -> x != null));
+                [f];
+            case DSequence(name, parallel, all, restart, continued, looped, children):
+                generateSequenceState( name, parallel, all, restart, continued, looped, children );
+			default: [];
+		}).filter((x) -> x != null);
+	}
 
-        #if false
-		fields.push({
-			name: "_effectStackValue",
+	static function generateVarField(name:String, ct:ComplexType, e:Expr):Field {
+		return {
+			name: name,
 			doc: null,
 			meta: [],
 			access: [],
-			kind: FVar(macro:Array<Dynamic>, macro new Array<Dynamic>()),
+			kind: FVar(ct, e),
 			pos: Context.currentPos()
-		});
+		};
+	}
+
+	static function generateFuncField(name:String, f:Function):Field {
+		return {
+			name: name,
+			doc: null,
+			meta: [],
+			access: [],
+			kind: FFun(f),
+			pos: Context.currentPos()
+		};
+	}
+
+	static function generateSequenceChild(x:BehaviourChild) {
+		return switch (x) {
+			case BConditional(expr):
+				var ne = getNumericExpression(expr);
+				macro($ne ? TaskResult.Completed : TaskResult.Failed);
+			case BChild(name, expr, decorators):
+				var tname = "__tick_" + name;
+				macro $i{tname}();
+			default:
+				throw('Unexpected child ${x}');
+				null;
+		}
+	}
+
+	static function generateSequenceState(name :String, parallel : Bool, all : Bool, restart : Bool, continued : Bool, looped : Bool, children : Array<BehaviourChild>):Array<Field> {
+        var state = [];
+        state.push( generateVarField('__tick_${name}_head', macro :Int, macro 0));
+		return state;
+	}
+
+	static function generateSequence(name:String, children:Array<BehaviourChild>):Function {
+		var statements = children.map((x) -> {
+			var c = generateSequenceChild(x);
+			macro if ($c == TaskResult.Failed)
+				return TaskResult.Failed;
+		}).filter((x) -> x != null);
+
+        
+		statements.push(macro return TaskResult.Completed);
+		var body = macro $b{statements};
+
+		return body.func([], macro:TaskResult, null, false);
+	}
+
+	static function generateRestartSequence(name:String, children:Array<BehaviourChild>):Function {
+		var statements = children.map((x) -> {
+			var c = generateSequenceChild(x);
+			macro if ($c == TaskResult.Failed)
+				return TaskResult.Failed;
+		}).filter((x) -> x != null);
+
+		statements.push(macro return TaskResult.Completed);
+		var body = macro $b{statements};
+
+		return body.func([], macro:TaskResult, null, false);
+	}
+
+	static function generateFirst(name:String, children:Array<BehaviourChild>):Function {
+		var statements = [];
+		statements.push(macro return TaskResult.Completed);
+		var body = macro $b{statements};
+		return body.func([], macro:TaskResult, null, false);
+	}
+
+	static function generateParallelAll(name:String, children:Array<BehaviourChild>):Function {
+		var statements = [];
+		statements.push(macro return TaskResult.Completed);
+		var body = macro $b{statements};
+
+		return body.func([], macro:TaskResult, null, false);
+	}
+
+	static function generateParallelOne(name:String, children:Array<BehaviourChild>):Function {
+		var statements = [];
+		statements.push(macro return TaskResult.Completed);
+		var body = macro $b{statements};
+
+		return body.func([], macro:TaskResult, null, false);
+	}
+
+	static function generateAction(name:String, async:Bool, condition:BooleanExpression, effects:Array<Effect>, parameters:Array<Parameter>,
+			calls:Array<Call>):Function {
+		var statements = [];
+		statements.push(macro return TaskResult.Completed);
+		var body = macro $b{statements};
+
+		return body.func([], macro:TaskResult, null, false);
+	}
+
+	static function generateBTTicks(ast:Array<Declaration>) {
+		return ast.map((x) -> switch (x) {
+			case DSequence(name, parallel, all, restart, continued, looped, children):
+				var f = if (all) {
+					parallel ? generateParallelAll(name, children) : restart ? generateRestartSequence(name, children) : generateSequence(name, children);
+				} else {
+					parallel ? generateParallelOne(name, children) : generateFirst(name, children);
+				}
+
+				generateFuncField("__tick_" + name, f);
+			case DAction(name, async, condition, effects, parameters, calls):
+				var f = generateAction(name, async, condition, effects, parameters, calls);
+				generateFuncField("__tick_" + name, f);
+			default: null;
+		}).filter((x) -> x != null);
+	}
+
+	static function generate(ast:Array<Declaration>, debug:Bool):Array<Field> {
+		var fields = Context.getBuildFields();
+		var mp = new haxe.macro.Printer();
+
+		var tagToFuncMap = getTagFunctions(fields, [":tick", ":begin"]);
+		var tickMap = tagToFuncMap.get(":tick");
+		var beginMap = tagToFuncMap.get(":begin");
+
+		var declarationTable = getDeclarationTable(ast);
+
+		fields = fields.concat(generateVariableFields(ast));
+
+		fields = fields.concat(generateBTTicks(ast));
+
+		#if false
+		var abstractCount = 0;
+		var operatorCount = 0;
+
+		#if false
+		fields.push(generateVarField("_effectStackValue", macro:Array<Dynamic>, macro new Array<Dynamic>()));
 
 		fields.push({
 			name: "_concretePlan",
@@ -229,7 +233,7 @@ class BTBuilder {
 		// unwind
 		{
 			var switch_block = ast.map((x) -> switch (x) {
-				case DOperator(name,  condition, effects, _, _):
+				case DOperator(name, condition, effects, _, _):
 					var fn = macro $i{"resolve_" + name};
 					var unwinds = effects.map((x) -> {
 						var varIdent = macro $i{x.state};
@@ -296,7 +300,7 @@ class BTBuilder {
 
 		// Resolve functions
 		{
-			function makeOperatorSim(name:String,  condition:BooleanExpression, effects:Array<Effect>) {
+			function makeOperatorSim(name:String, condition:BooleanExpression, effects:Array<Effect>) {
 				var ident = macro $i{name};
 
 				trace('Effects: ${effects}');
@@ -348,7 +352,7 @@ class BTBuilder {
 						return macro $call == BranchState.Success;
 					});
 
-					//Folding and && nesting need to work oppositely
+					// Folding and && nesting need to work oppositely
 					se.reverse();
 					var resolves = se.fold((x, y) -> macro $x && $y, macro true);
 
@@ -360,7 +364,7 @@ class BTBuilder {
 				}
 
 				var resolveMessage = ("Resolving " + name).toExpr();
-				var resolveTrace  = debug ? macro trace($resolveMessage + " : d " + depth): macro {};
+				var resolveTrace = debug ? macro trace($resolveMessage + " : d " + depth) : macro {};
 
 				var body = macro {
 					$resolveTrace;
@@ -372,7 +376,7 @@ class BTBuilder {
 
 					$b{methodBlocks};
 
-					$e{ (debug ? macro trace ("Unwinding...") : macro {} )};
+					$e{(debug ? macro trace("Unwinding...") : macro {})};
 					unwind(concrete_progress);
 					return BranchState.Failed;
 				};
@@ -425,17 +429,15 @@ class BTBuilder {
 		// Begin
 		{
 			var switchBlock = ast.map((x) -> switch (x) {
-				case DOperator(name, condition, effects,  _, _): beginMap.exists(name) ? {
-					var c : Case = {
-						values: [macro $i{"O_" + name.toUpperCase()}],
-						expr: EBlock(beginMap.get(name).map( 
-							(x) -> {
+				case DOperator(name, condition, effects, _, _): beginMap.exists(name) ? {
+						var c:Case = {
+							values: [macro $i{"O_" + name.toUpperCase()}],
+							expr: EBlock(beginMap.get(name).map((x) -> {
 								(macro $i{x.name}).call();
-							}
-						 )).at()
-					};
-					c;
-				}: null;
+							})).at()
+						};
+						c;
+					} : null;
 				default: null;
 			}).filter((x) -> x != null);
 			var switchExpr = ESwitch(macro op, switchBlock, null).at();
@@ -449,16 +451,14 @@ class BTBuilder {
 				kind: FFun(switchExpr.func(["op".toArg(macro:Int)], null, null, false)),
 				pos: Context.currentPos()
 			});
-		}
-		{
-			var debugTrace = debug ?macro 
-			{
+		} {
+			var debugTrace = debug ? macro {
 				trace("Executing plan:");
-//				_concretePlan.reverse();
-				for( o in _concretePlan ) trace('\tOperator ${getOperatorName(o)}');
-//				_concretePlan.reverse();
-			}
-			 : macro {};
+				//				_concretePlan.reverse();
+				for (o in _concretePlan)
+					trace('\tOperator ${getOperatorName(o)}');
+				//				_concretePlan.reverse();
+			} : macro {};
 			// Execute
 			fields.push(makeField("execute", [APublic], (macro {
 				$debugTrace;
@@ -469,59 +469,49 @@ class BTBuilder {
 					return;
 				beginOperator(_concretePlan[last]);
 			}).func([], null, null, false)));
-		}
-		{
+		} {
 			var nameCases = ast.map((x) -> switch (x) {
-				case DOperator(name,  condition, effects, parameters, calls):  {
-					var c : Case = {
-						values: [macro $i{"O_" + name.toUpperCase()}],
-						expr: macro $e{name.toExpr()}
+				case DOperator(name, condition, effects, parameters, calls): {
+						var c:Case = {
+							values: [macro $i{"O_" + name.toUpperCase()}],
+							expr: macro $e{name.toExpr()}
+						};
+						c;
 					};
-					c;
-				};
 				default: null;
 			}).filter((x) -> x != null);
-			var nameSwitch = ESwitch( macro op, nameCases, "".toExpr()).at();
+			var nameSwitch = ESwitch(macro op, nameCases, "".toExpr()).at();
 			// Operator name
-			fields.push(makeField("getOperatorName", [APublic], (macro return $nameSwitch).func(["op".toArg(macro:Int)], macro :String, null, false)));
+			fields.push(makeField("getOperatorName", [APublic], (macro return $nameSwitch).func(["op".toArg(macro:Int)], macro:String, null, false)));
 		}
-
 
 		// Tick
 		{
-			function makeTickCallArguments(params : Array<Parameter>, f : Field) : Array<Expr>{
-
-				switch(f.kind) {
+			function makeTickCallArguments(params:Array<Parameter>, f:Field):Array<Expr> {
+				switch (f.kind) {
 					case FFun(func):
-						return func.args.map( (x) -> 
-						{
-							var p = params.find( (y) -> y.name == x.name);
-							if (p == null) Context.error('Required operator parameter ${x.name} not found', Context.currentPos());
-							return getNumericExpression( p.expression );
-						}
-						);
+						return func.args.map((x) -> {
+							var p = params.find((y) -> y.name == x.name);
+							if (p == null)
+								Context.error('Required operator parameter ${x.name} not found', Context.currentPos());
+							return getNumericExpression(p.expression);
+						});
 					default:
 				}
 				return [];
 			}
 			var switchBlock = ast.map((x) -> switch (x) {
-				case DOperator(name,  condition, effects, parameters, calls): operatorMap.exists(name) ? {
-					var c : Case = {
-						values: [macro $i{"O_" + name.toUpperCase()}],
-						expr: EBlock(operatorMap.get(name).map( 
-							(x) -> {
+				case DOperator(name, condition, effects, parameters, calls): operatorMap.exists(name) ? {
+						var c:Case = {
+							values: [macro $i{"O_" + name.toUpperCase()}],
+							expr: EBlock(operatorMap.get(name).map((x) -> {
 								var call = (macro $i{x.name}).call(makeTickCallArguments(parameters, x));
-								// TODO [RC] - Make multi-call 
+								// TODO [RC] - Make multi-call
 								macro status = $call;
-							}
-						 ).concat(calls.map((x) -> 
-							(macro $i{x.name}).call(x.arguments.map( (arg) -> getNumericExpression(arg) ))
-						 ))
-						 
-						 ).at()
-					};
-					c;
-				}: null;
+							}).concat(calls.map((x) -> (macro $i{x.name}).call(x.arguments.map((arg) -> getNumericExpression(arg)))))).at()
+						};
+						c;
+					} : null;
 				default: null;
 			}).filter((x) -> x != null);
 
@@ -540,7 +530,7 @@ class BTBuilder {
 					default: null;
 				}).filter((x) -> x != null);
 			}
-			var tickDebug = debug ?  macro $b{tickDebugBlock}: macro {};
+			var tickDebug = debug ? macro $b{tickDebugBlock} : macro {};
 			fields.push(makeField("tick", [APublic], (macro {
 				var last = _concretePlan.length - 1;
 				if (last < 0)
@@ -561,11 +551,7 @@ class BTBuilder {
 				$tickDebug;
 				return status;
 			}).func([], macro:ai.common.TaskResult, null, false)));
-		}
-
-
-
-		{
+		} {
 			var debugBlock = debug ? macro trace('Adding operator ${getOperatorName(task)}') : macro {};
 
 			var bodyBlock = macro {
@@ -583,7 +569,8 @@ class BTBuilder {
 				pos: Context.currentPos()
 			});
 		}
-#end
+		#end
+		#end
 		for (d in ast) {
 			trace('${d}');
 		}
