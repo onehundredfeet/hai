@@ -2,5 +2,5 @@
 --class-path test
 --library tink_macro
 -lib haxe-strings
--hl bin/htn.hl
+-hl bin/bt.hl
 --main TestBT

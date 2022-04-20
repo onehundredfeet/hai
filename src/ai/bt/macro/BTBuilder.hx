@@ -93,12 +93,14 @@ class BTBuilder {
 		};
 	}
 
-	static function generateFuncField(name:String, f:Function):Field {
+	static function generateFuncField(name:String, f:Function, isPublic : Bool = false):Field {
+		var access = [];
+		if (isPublic) access.push(APublic);
 		return {
 			name: name,
 			doc: null,
 			meta: [],
-			access: [],
+			access: access,
 			kind: FFun(f),
 			pos: Context.currentPos()
 		};
@@ -373,6 +375,18 @@ class BTBuilder {
 		fields = fields.concat(generateVariableFields(ast));
 		fields = fields.concat(generateBTTicks(ast, tagToFuncMap));
 
+		var first = ast.find( (x) -> x.match( DSequence(_,_,_,_,_,_,_)));
+
+		if (first != null) {
+			switch(first) {
+				case DSequence(name, parallel, all, restart, continued, looped, children):
+					var id = macro $i{'__tick_${name}'};
+					var body = macro return $id();
+					var f = body.func([], macro:TaskResult, null, false);
+					fields.push( generateFuncField("btTick", f, true));
+				default:
+			}
+		}
 
 		#if false
 		var abstractCount = 0;

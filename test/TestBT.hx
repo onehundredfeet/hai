@@ -7,7 +7,7 @@ class LocalExampleBT {
     public function new() {}
     @:tick(stepA)
     function stepA() : TaskResult {
-        trace("Operator 1:");
+        trace("stepA");
         return TaskResult.Completed;
     }
 
@@ -48,6 +48,9 @@ class TestBT {
 
     public static function main() {
         var x = new LocalExampleBT();
+
+        x.btTick();
+
         /*
         var y = new ExampleHTN();
 
