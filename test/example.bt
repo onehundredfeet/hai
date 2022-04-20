@@ -13,7 +13,11 @@ sequence seq0 :restart
     ?enemyRange > DASH_RANGE
     stepAC
 
-first seq1 :restart
+first seq1 
+    stepA
+    stepB
+
+first seq1r :restart
     stepA
     stepB
 

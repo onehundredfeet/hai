@@ -120,18 +120,48 @@ class BTBuilder {
 
 	static function generateSequenceState(name :String, parallel : Bool, all : Bool, restart : Bool, continued : Bool, looped : Bool, children : Array<BehaviourChild>):Array<Field> {
         var state = [];
-        state.push( generateVarField('__tick_${name}_head', macro :Int, macro 0));
+        if (parallel) {
+            for (i in 0...children.length) {
+                state.push( generateVarField('__tick_${name}_res_${i}', macro :TaskResult, macro TaskResult.Running));
+            }
+        } else if (!restart) {
+            state.push( generateVarField('__tick_${name}_head', macro :Int, macro 0));
+        } 
 		return state;
 	}
 
-	static function generateSequence(name:String, children:Array<BehaviourChild>):Function {
-		var statements = children.map((x) -> {
-			var c = generateSequenceChild(x);
-			macro if ($c == TaskResult.Failed)
-				return TaskResult.Failed;
+	static function generateSequence(name:String, children:Array<BehaviourChild>,  bContinue : Bool):Function {
+        var headName = '__tick_${name}_head';
+        var headExpr = macro $i{headName};
+
+        var statements = [];
+        var childIdx = 0;
+
+		var cases :Array<Case> = children.map((x) -> {
+            var cid = childIdx++;
+            {
+                values : [cid.toExpr()],
+                guard : null,
+                expr : generateSequenceChild(x)
+            }
+
 		}).filter((x) -> x != null);
 
         
+        var switchExpr = ESwitch(headExpr, cases, macro TaskResult.Failed ).at();
+        var endExpr = childIdx.toExpr();
+
+        var resetExpr = bContinue ? macro {} : macro $headExpr = 0;
+
+        statements.push( macro for (i in $headExpr...$endExpr) { var res = $switchExpr; 
+            switch(res) {
+                case TaskResult.Completed:$headExpr++;
+                case TaskResult.Failed: $resetExpr; return TaskResult.Failed;
+                case TaskResult.Running: return TaskResult.Running;
+            }
+        });
+        
+        statements.push(macro $headExpr = 0);
 		statements.push(macro return TaskResult.Completed);
 		var body = macro $b{statements};
 
@@ -139,11 +169,15 @@ class BTBuilder {
 	}
 
 	static function generateRestartSequence(name:String, children:Array<BehaviourChild>):Function {
-		var statements = children.map((x) -> {
+		var statements = [];
+        
+        statements.push(macro var res : TaskResult);
+
+        statements = statements.concat(children.map((x) -> {
 			var c = generateSequenceChild(x);
-			macro if ($c == TaskResult.Failed)
-				return TaskResult.Failed;
-		}).filter((x) -> x != null);
+			macro if ((res = $c) != TaskResult.Completed)
+				return res;
+		}).filter((x) -> x != null));
 
 		statements.push(macro return TaskResult.Completed);
 		var body = macro $b{statements};
@@ -151,26 +185,138 @@ class BTBuilder {
 		return body.func([], macro:TaskResult, null, false);
 	}
 
-	static function generateFirst(name:String, children:Array<BehaviourChild>):Function {
-		var statements = [];
-		statements.push(macro return TaskResult.Completed);
+	static function generateFirst(name:String, children:Array<BehaviourChild>, restart: Bool):Function {
+		var headName = '__tick_${name}_head';
+        var headExpr = restart ? 0.toExpr() : macro $i{headName};
+
+        var statements = [];
+        var childIdx = 0;
+
+		var cases :Array<Case> = children.map((x) -> {
+            var cid = childIdx++;
+            {
+                values : [cid.toExpr()],
+                guard : null,
+                expr : generateSequenceChild(x)
+            }
+
+		}).filter((x) -> x != null);
+
+        
+        var switchExpr = ESwitch(headExpr, cases, macro TaskResult.Failed ).at();
+        var endExpr = childIdx.toExpr();
+
+        var resetExpr = restart ? macro {} : macro $headExpr = 0;
+        var headIncExpr = restart ? macro {} : macro $headExpr++;
+        statements.push( macro for (i in $headExpr...$endExpr) { 
+			var res = $switchExpr; 
+            switch(res) {
+                case TaskResult.Completed:$resetExpr; return TaskResult.Completed;
+                case TaskResult.Failed: $headIncExpr;
+                case TaskResult.Running: return TaskResult.Running;
+            }
+        });
+        
+        statements.push(resetExpr);
+		statements.push(macro return TaskResult.Failed);
 		var body = macro $b{statements};
+
 		return body.func([], macro:TaskResult, null, false);
 	}
 
 	static function generateParallelAll(name:String, children:Array<BehaviourChild>):Function {
-		var statements = [];
-		statements.push(macro return TaskResult.Completed);
-		var body = macro $b{statements};
+        var statements = [];
+        var childIdx = 0;
 
+		statements.push( macro var result = TaskResult.Completed );
+		var cases :Array<Case> = children.map((x) -> {
+			var vn = '__tick_${name}_res_${childIdx}';
+            var cid = childIdx++;
+			var e = generateSequenceChild(x);
+            {
+                values : [cid.toExpr()],
+                guard : null,
+                expr : macro (($i{vn} == TaskResult.Running) ? $e : $i{vn})
+            }
+
+		}).filter((x) -> x != null);
+
+        
+        var switchExpr = ESwitch(macro i, cases, macro TaskResult.Failed ).at();
+        var endExpr = childIdx.toExpr();
+
+		childIdx = 0;
+		var resetChildren = children.map( (x) -> 
+			{
+				var vn = '__tick_${name}_res_${childIdx}';
+				childIdx++;
+				macro $i{vn} = TaskResult.Running;
+			}
+		);
+		
+        var resetExpr = EBlock( resetChildren ).at();
+
+        statements.push( macro for (i in 0...$endExpr) { 
+			var res = $switchExpr; 
+            switch(res) {
+                case TaskResult.Completed:
+                case TaskResult.Failed: $resetExpr; return TaskResult.Failed;
+                case TaskResult.Running: result = TaskResult.Running;
+            }
+        });
+        
+        statements.push(macro if (result == TaskResult.Completed) $resetExpr);
+		statements.push(macro return result);
+		var body = macro $b{statements};
+		
 		return body.func([], macro:TaskResult, null, false);
 	}
 
 	static function generateParallelOne(name:String, children:Array<BehaviourChild>):Function {
 		var statements = [];
-		statements.push(macro return TaskResult.Completed);
-		var body = macro $b{statements};
+        var childIdx = 0;
 
+		statements.push( macro var result = TaskResult.Failed );
+		var cases :Array<Case> = children.map((x) -> {
+			var vn = '__tick_${name}_res_${childIdx}';
+            var cid = childIdx++;
+			var e = generateSequenceChild(x);
+            {
+                values : [cid.toExpr()],
+                guard : null,
+                expr : macro (($i{vn} == TaskResult.Running) ? $e : $i{vn})
+            }
+
+		}).filter((x) -> x != null);
+
+        
+        var switchExpr = ESwitch(macro i, cases, macro TaskResult.Failed ).at();
+        var endExpr = childIdx.toExpr();
+
+		childIdx = 0;
+		var resetChildren = children.map( (x) -> 
+			{
+				var vn = '__tick_${name}_res_${childIdx}';
+				childIdx++;
+				macro $i{vn} = TaskResult.Running;
+			}
+		);
+		
+        var resetExpr = EBlock( resetChildren ).at();
+
+        statements.push( macro for (i in 0...$endExpr) { 
+			var res = $switchExpr; 
+            switch(res) {
+                case TaskResult.Completed: $resetExpr; return TaskResult.Completed;
+                case TaskResult.Failed: 
+                case TaskResult.Running: result = TaskResult.Running;
+            }
+        });
+        
+        statements.push(macro if (result == TaskResult.Failed) $resetExpr);
+		statements.push(macro return result);
+		var body = macro $b{statements};
+		
 		return body.func([], macro:TaskResult, null, false);
 	}
 
@@ -187,9 +333,9 @@ class BTBuilder {
 		return ast.map((x) -> switch (x) {
 			case DSequence(name, parallel, all, restart, continued, looped, children):
 				var f = if (all) {
-					parallel ? generateParallelAll(name, children) : restart ? generateRestartSequence(name, children) : generateSequence(name, children);
+					parallel ? generateParallelAll(name, children) : restart ? generateRestartSequence(name, children) : generateSequence(name, children, continued);
 				} else {
-					parallel ? generateParallelOne(name, children) : generateFirst(name, children);
+					parallel ? generateParallelOne(name, children) : generateFirst(name, children, restart);
 				}
 
 				generateFuncField("__tick_" + name, f);
@@ -211,7 +357,6 @@ class BTBuilder {
 		var declarationTable = getDeclarationTable(ast);
 
 		fields = fields.concat(generateVariableFields(ast));
-
 		fields = fields.concat(generateBTTicks(ast));
 
 		#if false
