@@ -1,8 +1,13 @@
 package ai.common;
 
 @:enum
+@:forward
 abstract TaskResult(Int) from Int to Int {
-    var Running = 0;
-    var Completed = 1;
-    var Failed = 2;
+    var Failed = 0;
+    var Running = 1;
+    var Completed = 2;
+
+    public inline function asInt() : Int {
+        return this;
+    }
 }

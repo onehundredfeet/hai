@@ -5,13 +5,14 @@ import ai.common.TaskResult;
 @:build( ai.bt.macro.BTBuilder.build( "test/example.bt", true))
 class LocalExampleBT {
     public function new() {}
+    @:tick(stepA)
+    function stepA() : TaskResult {
+        trace("Operator 1:");
+        return TaskResult.Completed;
+    }
 
     /*
-    @:tick(op1)
-    function op1(parameter : Float) : TaskResult {
-        trace("Operator 1:");
-        return TaskResult.Running;
-    }
+    
 
     @:tick(op2)
     function op2() : TaskResult {

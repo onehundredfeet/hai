@@ -321,15 +321,31 @@ class BTBuilder {
 	}
 
 	static function generateAction(name:String, async:Bool, condition:BooleanExpression, effects:Array<Effect>, parameters:Array<Parameter>,
-			calls:Array<Call>):Function {
-		var statements = [];
-		statements.push(macro return TaskResult.Completed);
+			calls:Array<Call>, tagToFuncMap : Map<String, Map<String, Array<Field>>>):Function {
+		var statements = [macro var result = TaskResult.Completed];
+		var tickMap = tagToFuncMap.get(":tick");
+
+		if (tickMap != null) {
+			var actionTickList = tickMap.get(name);
+			if (actionTickList != null) {
+				for (x in actionTickList) {
+					var id = macro $i{x.name};
+					var e = macro {
+						var tres = $id();
+						if (tres.asInt() < result.asInt()) result = tres;
+					};
+					e.pos = x.pos;
+					statements.push(e);
+				}
+			}
+		}
+		statements.push(macro return result);
 		var body = macro $b{statements};
 
 		return body.func([], macro:TaskResult, null, false);
 	}
 
-	static function generateBTTicks(ast:Array<Declaration>) {
+	static function generateBTTicks(ast:Array<Declaration>, tagToFuncMap ) {
 		return ast.map((x) -> switch (x) {
 			case DSequence(name, parallel, all, restart, continued, looped, children):
 				var f = if (all) {
@@ -340,7 +356,7 @@ class BTBuilder {
 
 				generateFuncField("__tick_" + name, f);
 			case DAction(name, async, condition, effects, parameters, calls):
-				var f = generateAction(name, async, condition, effects, parameters, calls);
+				var f = generateAction(name, async, condition, effects, parameters, calls, tagToFuncMap);
 				generateFuncField("__tick_" + name, f);
 			default: null;
 		}).filter((x) -> x != null);
@@ -351,13 +367,12 @@ class BTBuilder {
 		var mp = new haxe.macro.Printer();
 
 		var tagToFuncMap = getTagFunctions(fields, [":tick", ":begin"]);
-		var tickMap = tagToFuncMap.get(":tick");
-		var beginMap = tagToFuncMap.get(":begin");
 
 		var declarationTable = getDeclarationTable(ast);
 
 		fields = fields.concat(generateVariableFields(ast));
-		fields = fields.concat(generateBTTicks(ast));
+		fields = fields.concat(generateBTTicks(ast, tagToFuncMap));
+
 
 		#if false
 		var abstractCount = 0;
