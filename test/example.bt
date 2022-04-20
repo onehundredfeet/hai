@@ -6,25 +6,30 @@ param enemyRange : Float
 var enemyVisible : Bool
 #var agentStatemachine : MyStateMachine
 
-
 #serial versions
 sequence seq0 :restart
     stepA
     ?enemyRange > DASH_RANGE
     stepAC
+    seq1
 
-first seq1 
-    stepA
+first seq1
+    seq2
     stepB
+    stepA
 
 first seq1r :restart
     stepA
     stepB
+    ?enemyRange > DASH_RANGE
 
 #parallel versions
 all seq2
     stepA
-    ?enemyRange > DASH_RANGE
+    stepB
+    stepAC
+    stepCC
+
 
 one seq3
     stepA
@@ -48,6 +53,7 @@ action stepAC : enemyRange > DASH_RANGE
 action stepB
 
 action stepCC
+    stepCC()
 
 action stepCD
 

@@ -11,6 +11,23 @@ class LocalExampleBT {
         return TaskResult.Completed;
     }
 
+    @:tick(stepAC)
+    function stepAC() : TaskResult {
+        trace("stepAC");
+        return TaskResult.Completed;
+    }
+
+
+    @:tick(stepB)
+    function stepB() : TaskResult {
+        trace("stepB");
+        return TaskResult.Completed;
+    }
+
+    function stepCC() {
+        trace("stepCC");
+    }
+
     /*
     
 
@@ -49,8 +66,11 @@ class TestBT {
     public static function main() {
         var x = new LocalExampleBT();
 
-        x.btTick();
+        x.DASH_RANGE = 30.;
+        x.enemyRange = 45.;
+        var y = x.btTick();
 
+        trace('Result = ${y}');
         /*
         var y = new ExampleHTN();
 
