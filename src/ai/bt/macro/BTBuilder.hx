@@ -6,6 +6,7 @@ import ai.bt.Parser;
 import haxe.macro.Context;
 import ai.tools.AST;
 import ai.macro.MacroTools;
+import ai.common.TaskResult;
 
 using tink.MacroApi;
 using haxe.macro.MacroStringTools;
@@ -107,14 +108,20 @@ class BTBuilder {
 		};
 	}
 
-	static function generateSequenceChild(x:BehaviourChild) {
+	static function generateSequenceChild(x:BehaviourChild, neutral : TaskResult) {
 		return switch (x) {
 			case BConditional(expr):
 				var ne = getNumericExpression(expr);
 				macro($ne ? TaskResult.Completed : TaskResult.Failed);
 			case BChild(name, expr, decorators):
 				var tname = "__tick_" + name;
-				macro $i{tname}();
+				if (expr != null) {
+					var ne = getNumericExpression(expr);
+					var neutralExpr = neutral.toExpr();
+					macro ($ne ? $i{tname}() : $neutralExpr );
+				} else {
+					macro $i{tname}();					
+				}
 			default:
 				throw('Unexpected child ${x}');
 				null;
@@ -146,7 +153,7 @@ class BTBuilder {
 			{
 				values: [cid.toExpr()],
 				guard: null,
-				expr: generateSequenceChild(x)
+				expr: generateSequenceChild(x, TaskResult.Completed)
 			}
 		}).filter((x) -> x != null);
 
@@ -180,7 +187,7 @@ class BTBuilder {
 		statements.push(macro var res:TaskResult);
 
 		statements = statements.concat(children.map((x) -> {
-			var c = generateSequenceChild(x);
+			var c = generateSequenceChild(x, TaskResult.Completed);
 			macro if ((res = $c) != TaskResult.Completed)
 				return res;
 		}).filter((x) -> x != null));
@@ -203,7 +210,7 @@ class BTBuilder {
 			{
 				values: [cid.toExpr()],
 				guard: null,
-				expr: generateSequenceChild(x)
+				expr: generateSequenceChild(x, TaskResult.Failed)
 			}
 		}).filter((x) -> x != null);
 
@@ -239,7 +246,7 @@ class BTBuilder {
 		var cases:Array<Case> = children.map((x) -> {
 			var vn = '__tick_${name}_res_${childIdx}';
 			var cid = childIdx++;
-			var e = generateSequenceChild(x);
+			var e = generateSequenceChild(x, TaskResult.Completed);
 			{
 				values: [cid.toExpr()],
 				guard: null,
@@ -286,7 +293,7 @@ class BTBuilder {
 		var cases:Array<Case> = children.map((x) -> {
 			var vn = '__tick_${name}_res_${childIdx}';
 			var cid = childIdx++;
-			var e = generateSequenceChild(x);
+			var e = generateSequenceChild(x, TaskResult.Failed);
 			{
 				values: [cid.toExpr()],
 				guard: null,
