@@ -190,7 +190,146 @@ class AIParser extends Lexer {
 		return {name: name, condition: conditions, subtasks: subTasks};
 	}
 
-	function parseNumericExpression():NumericExpression {
+	 function isUnaryOp(op:String) {
+		return switch (op) {
+			case "!", "-": true;
+			default: false;
+		}
+	}
+	function isBinaryOp(op:String) {
+		return switch (op) {
+			case "%": true;
+			case "*", "/": true;
+			case "+", "-": true;
+			case ">", "<", ">=", "<=", "==": true;
+			case "&&": true;
+			case "||":true;
+			default: false;
+		}
+	}
+	function exprUnaryPrecedence(op:String) {
+		return switch (op) {
+			case "!", "-": 7;
+			default: 0;
+		}
+	}
+	function exprBinaryPrecedence(op:String) {
+		return switch (op) {
+			case "%": 6;
+			case "*", "/": 5;
+			case "+", "-": 4;
+			case ">", "<", ">=", "<=", "==": 3;
+			case "&&": 2;
+			case "||":1;
+			default: 0;
+		}
+	}
+
+
+	/*
+		
+
+		P is
+		if next is a unary operator
+			 const op := unary(next)
+			 consume
+			 q := prec( op )
+			 const t := Exp( q )
+			 return mkNode( op, t )
+		else if next = "("
+			 consume
+			 const t := Exp( 0 )
+			 expect ")"
+			 return t
+		else if next is a v
+			 const t := mkLeaf( next )
+			 consume
+			 return t
+		else
+			 error
+	 */
+
+	function numExprP():NumericExpression {
+		var x = nextUnless(TNewLine);
+
+		switch (x) {
+			case TOp(op):
+				if (isUnaryOp(op)) {
+					// unary
+					var q = exprUnaryPrecedence(op);
+					var t = numExprExp(0);
+					return NEUnaryOp(op, t);
+				}
+				unexpected(x);
+			case TPOpen:
+				var t = numExprExp(0);
+				ensure(TPClose);
+				return t;
+			case TId(s):
+				return NEIdent(s);
+			case TNumber(value):
+				return NELiteral(value);
+			default:
+				returnToken(x);
+		}
+		return null;
+	}
+
+	/*
+		Exp( p ) is
+		var t : Tree
+		t := P
+		while next is a binary operator and prec(binary(next)) >= p
+		   const op := binary(next)
+		   consume
+		   const q := case associativity(op)
+					  of Right: prec( op )
+						 Left:  1+prec( op )
+		   const t1 := Exp( q )
+		   t := mkNode( op, t, t1)
+		return t
+	 */
+	function numExprExp(p:Int):NumericExpression {
+		var t = numExprP();
+
+		while (true) {
+			var x = nextUnless(TNewLine);
+			switch (x) {
+				case TOp(op):
+					var prec = exprBinaryPrecedence(op);
+					if (isBinaryOp(op) && prec >= p) {
+						var q = 1 + prec;
+						var t1 = numExprExp(q);
+						t = NEBinaryOp(op, t, t1 );
+					} else {
+						returnToken(x);
+						break;
+					}
+				default:
+					returnToken(x);
+					break;
+			}
+		}
+
+		return t;
+	}
+
+	/*
+Eparser is
+		   var t : Tree
+		   t := Exp( 0 )
+		   expect( end )
+		   return t
+	*/
+	function parseNumericExpression(optional=false):NumericExpression {
+		var x = numExprExp(0);
+		if (x == null && !optional) {
+			error("Expected numerical expression");
+		}
+		return x;
+	}
+
+	function parseNumericExpressionOld():NumericExpression {
 		var top:NumericExpression = null;
 
 		var tk = nextUnless(TNewLine);
