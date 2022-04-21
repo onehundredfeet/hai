@@ -451,6 +451,9 @@ Eparser is
 								default: unexpected(TId(flag));
 							}
 						}
+
+						var sideCondition = maybe(TQuestion) ? parseNumericExpression() : null;
+
 						ensure(TNewLine);
 
 						var children = [];
@@ -467,8 +470,8 @@ Eparser is
 
 										var d = parseDecl(alignment, declarations);
 										switch (d) {
-											case DSequence(childName, _, _, _, _, _, _):
-												children.push(BChild(childName, null, []));
+											case DSequence(childName, _, _, _, _, _, _, childSideCondition):
+												children.push(BChild(childName, childSideCondition, []));
 												declarations.push(d);
 											default:
 										}
@@ -513,7 +516,7 @@ Eparser is
 						}
 
 						// sequence breed
-						return DSequence(name, parallel, all, reset, continued, looped, children);
+						return DSequence(name, parallel, all, reset, continued, looped, children, sideCondition);
 					case "operator":
 						var name = ident();
 

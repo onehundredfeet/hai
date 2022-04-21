@@ -77,7 +77,7 @@ class BTBuilder {
 						};
 				}
 					[f];
-			case DSequence(name, parallel, all, restart, continued, looped, children):
+			case DSequence(name, parallel, all, restart, continued, looped, children, _):
 				generateSequenceState(name, parallel, all, restart, continued, looped, children);
 			default: [];
 		}).filter((x) -> x != null);
@@ -364,7 +364,7 @@ class BTBuilder {
 
 	static function generateBTTicks(ast:Array<Declaration>, tagToFuncMap) {
 		return ast.map((x) -> switch (x) {
-			case DSequence(name, parallel, all, restart, continued, looped, children):
+			case DSequence(name, parallel, all, restart, continued, looped, children,_):
 				var f = if (all) {
 					parallel ? generateParallelAll(name,
 						children) : restart ? generateRestartSequence(name, children) : generateSequence(name, children, continued);
@@ -409,7 +409,7 @@ class BTBuilder {
 
 		if (first != null) {
 			switch (first) {
-				case DSequence(name, parallel, all, restart, continued, looped, children):
+				case DSequence(name, parallel, all, restart, continued, looped, children,_):
 					var id = macro $i{'__tick_${name}'};
 					var body = macro return $id();
 					var f = body.func([], macro:TaskResult, null, false);

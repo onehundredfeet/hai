@@ -64,6 +64,6 @@ enum Declaration {
     DVariable( kind : VariableKind,name : String, type : ExpressionType, value : NumericExpression );
     DAbstract(name : String, methods : Array<Method>);
     DOperator(name : String,  condition : BooleanExpression, effects : Array<Effect>, parameters:Array<Parameter>,calls:Array<Call>);
-    DSequence(name :String, parallel : Bool, all : Bool, restart : Bool, continued : Bool, looped : Bool, children : Array<BehaviourChild>);
+    DSequence(name :String, parallel : Bool, all : Bool, restart : Bool, continued : Bool, looped : Bool, children : Array<BehaviourChild>, sideCondition : NumericExpression);
     DAction(name : String, async : Bool, condition : BooleanExpression, effects : Array<Effect>,parameters:Array<Parameter>,calls:Array<Call>);
 }
