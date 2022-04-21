@@ -396,6 +396,15 @@ Eparser is
 		return x;
 	}
 
+	function parseSideCondition() {
+		return if (maybe(TQuestion)) {
+			SCIf(parseNumericExpression());
+		} else if (maybe(TOp("->"))) {
+			SCWhile(parseNumericExpression());
+		} 
+		else null;
+	}
+
 	function parseDecl(baseAlignment:Int, declarations:Array<Declaration>):Declaration {
 		//        trace ('Parsing decl');
 		switch (next()) {
@@ -452,7 +461,8 @@ Eparser is
 							}
 						}
 
-						var sideCondition = maybe(TQuestion) ? parseNumericExpression() : null;
+						
+						var sideCondition = parseSideCondition();
 
 						ensure(TNewLine);
 
@@ -503,11 +513,8 @@ Eparser is
 
 											decorators.reverse();
 										}
-										if (maybe(TQuestion)) {
-											expr = parseNumericExpression();
-										}
-
-										children.push(BChild(s, expr, decorators));
+										var sidec = parseSideCondition();
+										children.push(BChild(s, sidec, decorators));
 										ensure(TNewLine);
 									}
 								case var x:

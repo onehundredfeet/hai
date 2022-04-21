@@ -113,12 +113,19 @@ class BTBuilder {
 			case BConditional(expr):
 				var ne = getNumericExpression(expr);
 				macro($ne ? TaskResult.Completed : TaskResult.Failed);
-			case BChild(name, expr, decorators):
+			case BChild(name, sc, decorators):
 				var tname = "__tick_" + name;
-				if (expr != null) {
-					var ne = getNumericExpression(expr);
-					var neutralExpr = neutral.toExpr();
-					macro ($ne ? $i{tname}() : $neutralExpr );
+				if (sc != null) {
+					switch(sc) {
+						case SCIf(expr):
+							var ne = getNumericExpression(expr);
+							var neutralExpr = neutral.toExpr();
+							macro ($ne ? $i{tname}() : $neutralExpr );
+						case SCWhile(expr):
+							var ne = getNumericExpression(expr);
+							var neutralExpr = neutral.toExpr();
+							macro ($ne ? {$i{tname}(); TaskResult.Running;} :  $neutralExpr );
+					}
 				} else {
 					macro $i{tname}();					
 				}
@@ -218,8 +225,7 @@ class BTBuilder {
 		var endExpr = childIdx.toExpr();
 
 		var resetExpr = restart ? macro {} : macro $headExpr = 0;
-		var headIncExpr = restart ? macro {} : macro $headExpr
-		++;
+		var headIncExpr = restart ? macro {} : macro $headExpr++;
 		statements.push(macro for (i in $headExpr...$endExpr) {
 			var res = $switchExpr;
 			switch (res) {

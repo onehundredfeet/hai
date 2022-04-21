@@ -55,15 +55,22 @@ typedef Decorator = {
     name : String
 }
 
+enum SideCondition {
+    SCIf( expr : NumericExpression );
+    SCWhile( expr : NumericExpression );
+}
+
 enum BehaviourChild {
     BConditional(expr : NumericExpression);
-    BChild(name : String, expr : NumericExpression, decorators : Array<Decorator>);
+    BChild(name : String, expr : SideCondition, decorators : Array<Decorator>);
 }
+
+
 
 enum Declaration {
     DVariable( kind : VariableKind,name : String, type : ExpressionType, value : NumericExpression );
     DAbstract(name : String, methods : Array<Method>);
     DOperator(name : String,  condition : BooleanExpression, effects : Array<Effect>, parameters:Array<Parameter>,calls:Array<Call>);
-    DSequence(name :String, parallel : Bool, all : Bool, restart : Bool, continued : Bool, looped : Bool, children : Array<BehaviourChild>, sideCondition : NumericExpression);
+    DSequence(name :String, parallel : Bool, all : Bool, restart : Bool, continued : Bool, looped : Bool, children : Array<BehaviourChild>, sideCondition : SideCondition);
     DAction(name : String, async : Bool, condition : BooleanExpression, effects : Array<Effect>,parameters:Array<Parameter>,calls:Array<Call>);
 }
