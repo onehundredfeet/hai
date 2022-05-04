@@ -35,8 +35,6 @@ class AIParser extends Lexer {
 		this.input = input;
 		var declarations = new Array<Declaration>();
 
-		trace('Starting parsing...${fileName}');
-
 		var alignment = 0;
 
 		while (true) {

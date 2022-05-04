@@ -108,7 +108,7 @@ class BTBuilder {
 		};
 	}
 
-	static function generateSequenceChild(x:BehaviourChild, neutral : TaskResult) {
+	static function generateSequenceChild(x:BehaviourChild, neutral:TaskResult) {
 		return switch (x) {
 			case BConditional(expr):
 				var ne = getNumericExpression(expr);
@@ -116,18 +116,18 @@ class BTBuilder {
 			case BChild(name, sc, decorators):
 				var tname = "__tick_" + name;
 				if (sc != null) {
-					switch(sc) {
+					switch (sc) {
 						case SCIf(expr):
 							var ne = getNumericExpression(expr);
 							var neutralExpr = neutral.toExpr();
-							macro ($ne ? $i{tname}() : $neutralExpr );
+							macro($ne ? $i{tname}() : $neutralExpr);
 						case SCWhile(expr):
 							var ne = getNumericExpression(expr);
 							var neutralExpr = neutral.toExpr();
-							macro ($ne ? {$i{tname}(); TaskResult.Running;} :  $neutralExpr );
+							macro($ne ? {$i{tname}(); TaskResult.Running;} : $neutralExpr);
 					}
 				} else {
-					macro $i{tname}();					
+					macro $i{tname}();
 				}
 			default:
 				throw('Unexpected child ${x}');
@@ -225,7 +225,8 @@ class BTBuilder {
 		var endExpr = childIdx.toExpr();
 
 		var resetExpr = restart ? macro {} : macro $headExpr = 0;
-		var headIncExpr = restart ? macro {} : macro $headExpr++;
+		var headIncExpr = restart ? macro {} : macro $headExpr
+		++;
 		statements.push(macro for (i in $headExpr...$endExpr) {
 			var res = $switchExpr;
 			switch (res) {
@@ -370,7 +371,7 @@ class BTBuilder {
 
 	static function generateBTTicks(ast:Array<Declaration>, tagToFuncMap) {
 		return ast.map((x) -> switch (x) {
-			case DSequence(name, parallel, all, restart, continued, looped, children,_):
+			case DSequence(name, parallel, all, restart, continued, looped, children, _):
 				var f = if (all) {
 					parallel ? generateParallelAll(name,
 						children) : restart ? generateRestartSequence(name, children) : generateSequence(name, children, continued);
@@ -415,7 +416,7 @@ class BTBuilder {
 
 		if (first != null) {
 			switch (first) {
-				case DSequence(name, parallel, all, restart, continued, looped, children,_):
+				case DSequence(name, parallel, all, restart, continued, looped, children, _):
 					var id = macro $i{'__tick_${name}'};
 					var body = macro return $id();
 					var f = body.func([], macro:TaskResult, null, false);
@@ -768,14 +769,15 @@ class BTBuilder {
 		}
 		#end
 		#end
-		for (d in ast) {
-			trace('${d}');
-		}
+		if (debug) {
+			for (d in ast) {
+				trace('${d}');
+			}
 
-		for (f in fields) {
-			trace(mp.printField(f));
+			for (f in fields) {
+				trace(mp.printField(f));
+			}
 		}
-
 		return fields;
 	}
 
