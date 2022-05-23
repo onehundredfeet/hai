@@ -21,7 +21,11 @@ class StateMachineModel {
             _defaultStates.push("DEFAULT");
         }
 
-        _stateNames = unique(_stateShapes.map(getStateShapeName).filter(notNull).map(scrubLabel).array());
+        var filteredShapes = _stateShapes.filter( (x) -> getStateShapeName(x) != null);
+        for (fs in filteredShapes) {
+            _stateMap[scrubLabel(getStateShapeName(fs))] = fs;
+        }
+        _stateNames = [for (k in _stateMap.keys()) k];
         _transitionNames = unique(_transitions.map(getTransitionShapeName).filter(notNull).map(scrubLabel).array());
 
         buildGraph();
@@ -50,6 +54,9 @@ class StateMachineModel {
         return _defaultStates[subgraph];
     }
 
+    public function getStateNode( name : String ) {
+        return _stateMap.get(name);
+    }
     var _allShapes : Array<Xml>;
     var  _stateShapes : Array<Xml>;
     var _connections : Array<Xml>;
@@ -60,6 +67,7 @@ class StateMachineModel {
     var _transitionNames : Array<String>;
     var  _name : String;
 
+    var _stateMap = new Map<String, Xml>();
     var  _graph : GraphModel;
 
 

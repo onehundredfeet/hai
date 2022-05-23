@@ -128,7 +128,9 @@ class StateMachineBuilder {
 			cases.push(c);
 		}
 
-		var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state0"))), cases, Exprs.at(EThrow(Exprs.at(EConst(CString("State not found")))))));
+		var throwExpr = macro throw 'State not found ${_state0}';
+
+		var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state0"))), cases, throwExpr));
 		cb.addMember(Member.getter("stateName", null, sw, macro:String));
 
 		if (allowListeners) {
@@ -410,7 +412,7 @@ class StateMachineBuilder {
 		var cases = new Array<Case>();
 
 		for (s in model.stateShapes) {
-			if (isGroupNode(s) || isGroupProxy(s))
+			if (isGroupNode(s)) // || isGroupProxy(s)
 				continue;
 			var content = getStateShapeName(s);
 			if (content == null)
@@ -433,7 +435,8 @@ class StateMachineBuilder {
 			cases.push(theCase);
 		}
 
-		var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state0"))), cases, Exprs.at(EThrow(Exprs.at(EConst(CString("State not found")))))));
+		var throwExpr = macro throw 'State not found ${_state0}';
+		var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state0"))), cases, throwExpr));
 
 		blockArray.push(sw);
 		blockArray.push(macro return false);
@@ -622,16 +625,26 @@ class StateMachineBuilder {
 		return [];
 	}
 
+	static function getDefaultStateName(model:StateMachineModel) {
+		var defaultName = model.defaultStates[0];
+
+		var node = model.getStateNode(defaultName);
+		
+		var leafState = getInitialLeaf(node);
+		var leafStateName = getStateShapeName(leafState);
+
+		return "S_" + leafStateName;
+	}
 	static function buildConstructor(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		var con = cb.getConstructor();
 
-		con.init("_state0", Context.currentPos(), Value(exprID("S_" + model.defaultStates[0])));
+		con.init("_state0", Context.currentPos(), Value(exprID(getDefaultStateName(model))));
 		con.publish();
 	}
 
 	static function buildInitFunction(cb:tink.macro.ClassBuilder,  actions : ActionMaps, model:StateMachineModel) {
 
-		var xx = exprID("S_" + model.defaultStates[0]);
+		var xx = exprID(getDefaultStateName(model));
 
 		var blockList = new Array<Expr>();
 		//manual initialization due to weird network hxbit behaviour
@@ -640,7 +653,7 @@ class StateMachineBuilder {
 		blockList.push(macro _inTransition = false );
 		
 		if (actions.entry.exists(model.defaultStates[0])) {
-			var stateNameExpr = exprID("S_" + model.defaultStates[0]);
+			var stateNameExpr = exprID(getDefaultStateName(model));
 			for (a in actions.entry[model.defaultStates[0]])
 				blockList.push(exprCallField(a,stateNameExpr));
 		}
@@ -654,7 +667,8 @@ class StateMachineBuilder {
 
 	static function buildResetFunction(cb:tink.macro.ClassBuilder,  actions : ActionMaps, model:StateMachineModel) {
 
-		var xx = exprID("S_" + model.defaultStates[0]);
+		var defStateName = getDefaultStateName(model);
+		var xx = exprID(defStateName);
 
 		var blockList = new Array<Expr>();
 		//manual initialization due to weird network hxbit behaviour
@@ -662,9 +676,9 @@ class StateMachineBuilder {
 		blockList.push(macro _triggerQueue.resize(0) );
 		blockList.push(macro _inTransition = false );
 		
-		if (actions.entry.exists(model.defaultStates[0])) {
-			var stateNameExpr = exprID("S_" + model.defaultStates[0]);
-			for (a in actions.entry[model.defaultStates[0]])
+		if (actions.entry.exists(defStateName)) {
+			var stateNameExpr = exprID(defStateName);
+			for (a in actions.entry[defStateName])
 				blockList.push(exprCallField(a,stateNameExpr));
 		}
 

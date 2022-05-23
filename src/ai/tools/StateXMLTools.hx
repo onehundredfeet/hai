@@ -255,7 +255,7 @@ function getGroupInitialState(group : Xml) : Xml{
     var  shapes : Array<Xml> =  getShapes(group);
     if (shapes == null) throw "Group " + getGroupName(group) + " has no child states";
 
-    var initialState = first(shapes.filter( x -> hasProp(x,"initial") ));
+    var initialState = first(shapes.filter( x -> hasProp(x,"initial") && !isGroupProxy(x) ));
 
     if (initialState == null){
 //        trace(shapes);
