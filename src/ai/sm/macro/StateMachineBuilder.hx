@@ -282,14 +282,12 @@ class StateMachineBuilder {
 	static function buildFireFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		var stateCases = new Array<Case>();
 
-		
 		for (s in model.stateShapes) {
 			if (isGroupNode(s) || isGroupProxy(s))
 				continue;
 			var content = getStateShapeName(s);
 			if (content == null)
 				continue;
-
 			var triggers = new Map<String, Bool>();
 			var currentElement = s;
 
@@ -305,7 +303,9 @@ class StateMachineBuilder {
 					var sourceStateName = getStateShapeName(s);
 					var targetStateName = getStateShapeName(targetState);
 					if (triggers.exists(trigger)) {
-						throw "Overlapping triggers " + trigger;
+						Context.fatalError('Overlapping triggers ${trigger} on ${content}', Context.currentPos());
+					} else {
+						triggers.set(trigger,true);
 					}
 
 					var blockArray = new Array<Expr>();
@@ -361,7 +361,7 @@ class StateMachineBuilder {
 				s = parent;
 			}
 
-			var triggerSwitch = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("trigger"))), triggerCases, null));
+			var triggerSwitch = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("trigger"))), triggerCases, EBlock([]).at()));
 
 			var stateCasec:Case = {values: [Exprs.at(EConst(CIdent("S_" + content)))], expr: triggerSwitch};
 			stateCases.push(stateCasec);
@@ -412,13 +412,14 @@ class StateMachineBuilder {
 		var cases = new Array<Case>();
 
 		for (s in model.stateShapes) {
-			if (isGroupNode(s)) // || isGroupProxy(s)
+			if (isGroupNode(s) )
 				continue;
 			var content = getStateShapeName(s);
 			if (content == null)
 				continue;
-
+			
 			var parent = getParentGroup(s);
+			if (isGroupProxy(s)) parent = getParentGroup(parent);
 			if (parent == null || isEmpty(getStateShapeName(parent)))
 				continue;
 
@@ -431,7 +432,7 @@ class StateMachineBuilder {
 				parent = getParentGroup(parent);
 			}
 
-			var theCase:Case = {values: [Exprs.at(EConst(CIdent("S_" + getStateShapeName(s))))], expr: Exprs.at(ESwitch(exprID("state"), subcases, null))};
+			var theCase:Case = {values: [Exprs.at(EConst(CIdent("S_" + getStateShapeName(s))))], expr: Exprs.at(ESwitch(exprID("state"), subcases, EBlock([]).at()))};
 			cases.push(theCase);
 		}
 
@@ -690,11 +691,15 @@ class StateMachineBuilder {
 	}
 
 
-	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool, print:Bool):Array<Field> {
+	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool):Array<Field> {
 
 		//trace("Building state machine " + Context.getLocalClass().get().name);
 
 		var model = getMachine(path, machine);
+
+		var cm = Context.getLocalClass().get().meta.get().toMap();
+		var signals = cm.exists(":sm_signals");
+		var debug = cm.exists(":sm_debug");
 
 		var cb = new tink.macro.ClassBuilder();
 
@@ -720,7 +725,12 @@ class StateMachineBuilder {
 
 		buildResetFunction(cb,actions, model);
 		
-		return cb.export(print);
+		if (cm.exists(":sm_print")) {
+			for (m in cb.iterator()) {
+				trace(_printer.printField(m.asField()));
+			}
+		}
+		return cb.export(debug);
 	}
 
 	macro static public function print():Array<Field> {
