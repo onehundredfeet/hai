@@ -1,10 +1,10 @@
 package ai.bt;
 import ai.tools.Lexer;
 import ai.tools.AST;
-import ai.tools.AIParser;
+import ai.tools.AIIndentedParser;
 
 #if macro
-class Parser extends AIParser {
+class Parser extends AIIndentedParser {
 	
 	
 }

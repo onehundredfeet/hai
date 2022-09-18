@@ -3,7 +3,7 @@ package ai.tools;
 import ai.tools.Lexer;
 import ai.tools.AST;
 
-class AIParser extends Lexer {
+class AIIndentedParser extends Lexer {
 	var types:Map<String, ExpressionType>;
 
 	public function new() {

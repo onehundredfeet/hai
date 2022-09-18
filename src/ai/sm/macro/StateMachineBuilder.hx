@@ -639,6 +639,8 @@ class StateMachineBuilder {
 	static function buildConstructor(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
 		var con = cb.getConstructor();
 
+		Context.fatalError( "Unsupported atm", Context.currentPos() );
+
 		con.init("_state0", Context.currentPos(), Value(exprID(getDefaultStateName(model))));
 		con.publish();
 	}
