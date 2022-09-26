@@ -176,6 +176,10 @@ function getGroupProxy(group : Xml) {
     return first(getShapes(group));
 }
 
+function getNameEnumName( nodeName : String )  {
+    return "S_" + scrubLabel( nodeName);
+}
+
 function getGroupName(group : Xml) : String{
     return getStateShapeName(getGroupProxy(group));
 }
@@ -189,7 +193,7 @@ function getShapeContent(shape : Xml) : String{
 }
 
 
-function getStateShapeName(shape : Xml) : String{
+function getRawStateShapeName(shape : Xml) : String{
     if (shape == null) return null;
 
     var name = "";
@@ -198,9 +202,17 @@ function getStateShapeName(shape : Xml) : String{
         name = getGroupName(shape);
     }
     else {
-        name = getShapeContent(shape).toUpperCase();
+        name = getShapeContent(shape);
     }
 
+    return name;
+}
+
+function getStateShapeName(shape : Xml) : String{
+    if (shape == null) return null;
+
+    var name = getRawStateShapeName(shape);
+    
     return scrubLabel(name);
 }
 
@@ -224,6 +236,18 @@ function getParentGroup(shape : Xml) : Xml {
         return parent;
     }
     return null;
+}
+
+function getRootNode(shape : Xml) {
+    if (shape == null) return shape;
+    if (shape.parent == null) return shape;
+
+    var parent = shape.parent.parent;
+
+    if (parent != null && parent.nodeName == "Shape") {
+        return getRootNode(parent);
+    }
+    return shape;
 }
 
 function isGroupProxy(shape : Xml) : Bool {

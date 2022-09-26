@@ -655,12 +655,33 @@ class StateMachineBuilder {
 		blockList.push(macro _triggerQueue = new Array<Int>() );
 		blockList.push(macro _inTransition = false );
 		
-		if (actions.entry.exists(model.defaultStates[0])) {
-			var stateNameExpr = exprID(getDefaultStateName(model));
-			for (a in actions.entry[model.defaultStates[0]])
-				blockList.push(exprCallField(a,stateNameExpr));
-		}
+		var curState = getRootNode( model.getStateNode(model.defaultStates[0]));
+		while (curState != null) {
+			var stateNodeName = getRawStateShapeName( curState );
 
+			if (actions.entry.exists(stateNodeName)) {
+				var stateNameExpr = exprID(getNameEnumName(stateNodeName));
+				for (a in actions.entry[stateNodeName])
+					blockList.push(exprCallField(a,stateNameExpr));
+			}
+
+			if (isGroupNode(curState)) {
+				curState = getGroupInitialState(curState);
+			} else {
+				curState = null;
+			}
+		
+
+			/*
+			if (actions.entry.exists(model.defaultStates[0])) {
+				var stateNameExpr = exprID(getDefaultStateName(model));
+				for (a in actions.entry[model.defaultStates[0]])
+					blockList.push(exprCallField(a,stateNameExpr));
+			}*/
+		
+		}
+		
+ 
 		var ff = EBlock(blockList).at().func([], false);
 		cb.addMember( makeMemberFunction("__state_init", ff) );
 
