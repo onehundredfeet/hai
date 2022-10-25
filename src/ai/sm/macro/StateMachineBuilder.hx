@@ -54,12 +54,12 @@ class StateMachineBuilder {
 	}
 	
 
-	static function makeMemberFunction(n:String, f:Function, isInline = false):Field {
+	static function makeMemberFunction(n:String, f:Function, access : Array<Access>):Field {
 		var func = {
 			name: n,
 			doc: null,
 			meta: [],
-			access: (isInline ? [APublic, AInline]: [APublic]),
+			access: access,
 			kind: FFun(f),
 			pos: Context.currentPos()
 		};
@@ -146,7 +146,7 @@ class StateMachineBuilder {
 
 			cb.addMember(listeneners);
 
-			cb.addMember(makeMemberFunction("addListener", Functions.func(macro _listeners.push(l), [Functions.toArg("l", ct)])));
+			cb.addMember(makeMemberFunction("addListener", Functions.func(macro _listeners.push(l), [Functions.toArg("l", ct)]), []));
 		}
 	}
 
@@ -237,7 +237,7 @@ class StateMachineBuilder {
 					addActions(entryMap, mmap.get(":enter"), field);
 					addActions(exitMap, mmap.get(":exit"), field);
 					addGlobals(entryGlobals, mmap.get(":enter"), field);
-					addGlobals(exitGlobals, mmap.get(":enter"), field);
+					addGlobals(exitGlobals, mmap.get(":exit"), field);
 					addConditionalActions(entryByMap, mmap.get(":enterby"), field);
 					addConditionalActions(entryFromMap, mmap.get(":enterfrom"), field);
 
@@ -526,7 +526,7 @@ class StateMachineBuilder {
 
 		}
 
-		cb.addMember(makeMemberFunction("onTraverse", Functions.func(ESwitch(transitionExpr,caseArray,  null).at(), [Functions.toArg("transition", macro:Int)], null, null, false ), true));
+		cb.addMember(makeMemberFunction("onTraverse", Functions.func(ESwitch(transitionExpr,caseArray,  null).at(), [Functions.toArg("transition", macro:Int)], null, null, false ), [AInline, AFinal]));
 
 		for (s in model.stateNames) {
 			var stateNameExpr = exprID("S_" + s);
@@ -549,7 +549,7 @@ class StateMachineBuilder {
 			for (ge in actions.globalEntry) {
 				handlerArray.push(exprCallField(ge,stateNameExpr, triggerExpr));
 			}
-			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)])));
+			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)]), [AInline, AFinal]));
 			
 			handlerArray.resize(0);
 			if (actions.exit.exists(s))
@@ -559,7 +559,7 @@ class StateMachineBuilder {
 				var call = Exprs.at(EField(macro _listeners[i], "onExit" + s));
 				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
 			}
-			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)])));
+			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)]), [AInline, AFinal]));
 			handlerArray.resize(0);
 			if (actions.entryFrom.exists(s))
 				for (a in actions.entryFrom[s])
@@ -568,7 +568,7 @@ class StateMachineBuilder {
 				var call = Exprs.at(EField(macro _listeners[i], "onEnterFrom" + s));
 				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, state)));
 			}
-			cb.addMember(makeMemberFunction("onEnterFrom" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("state", macro:Int)])));
+			cb.addMember(makeMemberFunction("onEnterFrom" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("state", macro:Int)]), [AInline, AFinal]));
 		}
 	}
 
@@ -610,9 +610,9 @@ class StateMachineBuilder {
 		for (s in model.stateNames) {
 			var x:Function = {args: [Functions.toArg("trigger", macro:Int)]};
 
-			fields.push(makeMemberFunction("onEnterBy" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int), Functions.toArg("trigger", macro:Int)]}));
-			fields.push(makeMemberFunction("onExit" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int), Functions.toArg("trigger", macro:Int)]}));
-			fields.push(makeMemberFunction("onEnterFrom" + s, {ret: macro:Void, args: [Functions.toArg("from", macro:Int), Functions.toArg("to", macro:Int)]}));
+			fields.push(makeMemberFunction("onEnterBy" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int), Functions.toArg("trigger", macro:Int)]}, []));
+			fields.push(makeMemberFunction("onExit" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int), Functions.toArg("trigger", macro:Int)]}, []));
+			fields.push(makeMemberFunction("onEnterFrom" + s, {ret: macro:Void, args: [Functions.toArg("from", macro:Int), Functions.toArg("to", macro:Int)]}, []));
 		}
 
 		Context.defineType({
@@ -670,20 +670,13 @@ class StateMachineBuilder {
 			} else {
 				curState = null;
 			}
-		
 
-			/*
-			if (actions.entry.exists(model.defaultStates[0])) {
-				var stateNameExpr = exprID(getDefaultStateName(model));
-				for (a in actions.entry[model.defaultStates[0]])
-					blockList.push(exprCallField(a,stateNameExpr));
-			}*/
 		
 		}
 		
  
 		var ff = EBlock(blockList).at().func([], false);
-		cb.addMember( makeMemberFunction("__state_init", ff) );
+		cb.addMember( makeMemberFunction("__state_init", ff, [AFinal]) );
 
 //		con.init("_state0", Context.currentPos(), Value(exprID("S_" + model.defaultStates[0])));
 //		con.publish();
@@ -707,7 +700,7 @@ class StateMachineBuilder {
 		}
 
 		var ff = EBlock(blockList).at().func([], false);
-		cb.addMember( makeMemberFunction("__reset_graph", ff) );
+		cb.addMember( makeMemberFunction("__reset_graph", ff, [AFinal]) );
 
 //		con.init("_state0", Context.currentPos(), Value(exprID("S_" + model.defaultStates[0])));
 //		con.publish();
