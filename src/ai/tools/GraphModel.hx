@@ -16,7 +16,7 @@ class GraphModel {
         return targetID + "_" + source;
     }
 
-	public function walkOutgoingConnections(current:Xml, missingName:String->Void, validConnection:(String, Xml) -> Void) {
+	public function walkOutgoingConnections(current:Xml, missingName:String->Void, validConnection:(String, Xml) -> Void, requireTransitionContent = true) {
 		var stateShape = getConcreteShape(current);
         
 		var id = scrubLabel(getShapeID(stateShape));
@@ -41,7 +41,7 @@ class GraphModel {
 					} else if (isTransitionShape(targetNode)) {
 						var targetTransition = targetNode;
 						var transitionContent = scrubLabel(getTransitionShapeName(targetTransition));
-						if (isEmpty(transitionContent)) {
+						if (requireTransitionContent && isEmpty(transitionContent)) {
 							if (missingName != null)
 								missingName(transitionContent);
 						} else {

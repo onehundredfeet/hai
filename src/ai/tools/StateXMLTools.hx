@@ -3,6 +3,7 @@ package ai.tools;
 import haxe.ds.Map;
 using Lambda;
 using hx.strings.Strings; // augment all Strings with new functions
+import haxe.ds.StringMap;
 
 function isGroupNode(shape : Xml) : Bool{
     if (shape == null) return false;
@@ -90,6 +91,14 @@ function getPropValue( e : Xml, propName : String) : String{
 
     }
     return null;
+}
+
+function getPropertyMap(  e : Xml ) : StringMap<String> {
+    var props = new StringMap<String>();
+    for( c in e.elementsNamed("Prop") ) {
+        props.set(getChildValue(c, "Label"), getChildValue(c, "Value"));
+    }
+    return props;
 }
 
 function isIgnored( e : Xml) : Bool {

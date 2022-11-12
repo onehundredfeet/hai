@@ -43,6 +43,9 @@ class StateMachineModel {
     public var transitionNames(get, never):Array<String>;
     function get_transitionNames() :Array<String> return _transitionNames;
 
+    public var transitions(get, never):Array<Xml>;
+    function get_transitions() :Array<Xml> return _transitions;
+
 
     public var graph(get, never):GraphModel;
     function get_graph() :GraphModel return _graph;
