@@ -61,9 +61,13 @@ class VisioToJSON {
 
                 node.set("id", stateIDs.get(getPath(s)));
                 
-				var p = getRawStateShapeName(getParentGroup(s));
-				if (p != null)
+                var pg = getParentGroup(s);
+				if (pg != null) {
+                    var p = getRawStateShapeName(pg);                    
 					node.set("parent", p);
+                    node.set("parentID", stateIDs.get(getPath(pg)));
+                }
+                
                 if (isGroupNode(s)) {
                     var children = [];
                     var shapes = getShapes(s);

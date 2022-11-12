@@ -23,6 +23,10 @@ class NodeGraphNode {
     public function new() {
 
     }
+
+    public function getChildren() : Array<NodeGraphNode> {
+        return outgoing.filter((x)->x.name == "_CHILD").map((x)->x.target);
+    }
 }
 
 class NodeGraph {
@@ -37,6 +41,6 @@ class NodeGraph {
     }
     public var nodes(get,never) : Array<NodeGraphNode>;
     function get_nodes() return _nodes;
-    
+
     var _nodes = new Array<NodeGraphNode>();
 }

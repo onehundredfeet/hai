@@ -12,10 +12,10 @@ class TestGraphJSON {
                 trace('\t\t${p.key}:${p.value}');
             }
             for (c in n.outgoing) {
-                trace('\t\tconnects to ${c.target.name}');
+                trace('\t\tconnects to ${c.target.name} by ${c.name}');
             }
             for (c in n.incoming) {
-                trace('\t\tconnects from ${c.source.name}');
+                trace('\t\tconnects from ${c.source.name} by ${c.name}');
             }
         }
     }

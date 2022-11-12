@@ -25,6 +25,16 @@ class NodeGraphReader {
                 for (doc_n in page.nodes) {
                     var graph_n = nodeMap.get(doc_n.id);
 
+                    if (doc_n.parentID != null) {
+                        var parent_n = nodeMap.get(doc_n.parentID);
+                        var pc = new  NodeGraphArc();
+                        pc.source = parent_n;
+                        pc.target = graph_n;
+                        pc.name = "_CHILD";
+                        parent_n.outgoing.push(pc);
+                        graph_n.incoming.push(pc);
+                    }
+
                     if (doc_n.outgoing != null) {
                         for (doc_c in doc_n.outgoing) {
                             var c = new NodeGraphArc();

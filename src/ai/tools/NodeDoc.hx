@@ -14,6 +14,7 @@ typedef DocNode = {
     name : String,
     id : Int,
     ?parent : String,
+    ?parentID : Int,
     ?outgoing : Array<DocNodeConnection>,
     ?properties : haxe.DynamicAccess<String>
 }
