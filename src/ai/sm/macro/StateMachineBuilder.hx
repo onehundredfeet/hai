@@ -8,17 +8,19 @@ import tink.macro.Exprs.VarDecl;
 import haxe.macro.MacroStringTools;
 import tink.macro.Ops.Unary;
 import tink.macro.ConstParam;
-import ai.tools.StateMachineModel;
-import ai.tools.Visio;
 import haxe.macro.Printer;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import tink.macro.Member;
-import ai.tools.StateXMLTools;
 import ai.macro.MacroTools;
+import gdoc.NodeDoc;
+import gdoc.NodeGraph;
+import gdoc.NodeDocReader;
+import gdoc.NodeGraphReader;
 
 using tink.MacroApi;
 using StringTools;
+using Lambda;
 
 typedef StateAction = {
 	entries:Array<String>,
@@ -53,6 +55,13 @@ class StateMachineBuilder {
 		return newField;
 	}
 	
+	static function isEmpty( s : String ) {
+		if (s == null) return true;
+		if (s.length == 0) return true;
+
+	
+		return false;
+	}
 
 	static function makeMemberFunction(n:String, f:Function, access : Array<Access>):Field {
 		var func = {
@@ -66,23 +75,25 @@ class StateMachineBuilder {
 		return func;
 	}
 
-	static function buildConstants(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
-		for (ss in model.stateShapes) {
-			//   trace("StateShape:" + ss.nodeName);
-		}
+	static function buildConstants(cb:tink.macro.ClassBuilder, model:NodeGraph) {
 		var count = 0;
-		for (ss in model.stateNames) {
-			cb.addMember(makeFinalInt("S_" + ss, count++, macro : ai.sm.State ));
+		for (ss in model.nodes) {
+			cb.addMember(makeFinalInt(getNameEnumStateName(ss), count++, macro : ai.sm.State ));
 			//            trace("State name:" + ss);
 		}
 		count = 0;
-		for (ss in model.transitionNames) {
+		var transitionNames = model.gatherTransitionNames();
+
+		for (ss in transitionNames) {
+			if (isEmpty(ss)) {
+				Context.fatalError('Empty transition name', Context.currentPos());
+			}
 			cb.addMember(makeFinalInt("T_" + ss, count++, macro : ai.sm.Transition ));
 			//            trace("State name:" + ss);
 		}
 	}
 
-	static function buildVars(cb:tink.macro.ClassBuilder, model:StateMachineModel, allowListeners: Bool) {
+	static function buildVars(cb:tink.macro.ClassBuilder, model:NodeGraph, allowListeners: Bool) {
 
 		cb.addMember( {
 			name: "_inTransition",
@@ -103,13 +114,14 @@ class StateMachineBuilder {
 		});
 
 		var count = 0;
-		for (ds in model.defaultStates) {
+		var defaultStates = [getDefaultState(model)];
+		for (ds in defaultStates) {
 			var stateField = {
 				name: "_state" + count,
 				doc: null,
 				meta: [],
 				access: [APrivate],
-				kind: FVar(macro:Int, Exprs.at(EConst(CIdent("S_" + ds)))),
+				kind: FVar(macro:Int, Exprs.at(EConst(CIdent(getNameEnumStateName(ds))))),
 				pos: Context.currentPos()
 			};
 
@@ -123,8 +135,8 @@ class StateMachineBuilder {
 
 		var cases = new Array<Case>();
 
-		for (i in 0...model.stateNames.length) {
-			var c:Case = {values: [exprConstInt(i)], expr: exprRet(exprConstString(model.stateNames[i]))};
+		for (i in 0...model.nodes.length) {
+			var c:Case = {values: [exprConstInt(i)], expr: exprRet(exprConstString(model.nodes[i].name))};
 			cases.push(c);
 		}
 
@@ -279,33 +291,38 @@ class StateMachineBuilder {
 		};
 	}
 
-	static function buildFireFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+	static function isValidLeafNode( n : NodeGraphNode) {
+		if (n.hasChildren())
+			return false;
+		if (n.name == null)
+			return false;
+		return true;
+	}
+
+	static function buildFireFunction(cb:tink.macro.ClassBuilder, graph:NodeGraph) {
 		var stateCases = new Array<Case>();
 
-		for (s in model.stateShapes) {
-			if (isGroupNode(s) || isGroupProxy(s))
-				continue;
-			var content = getStateShapeName(s);
-			if (content == null)
-				continue;
+		for (currentNode in graph.nodes) {
+			if (!isValidLeafNode(currentNode)) continue;
 			var triggers = new Map<String, Bool>();
-			var currentElement = s;
-
 			var triggerCases = new Array<Case>();
 
-			while (s != null && (isStateShape(s) || isGroupNode(s))) {
-				var parent = s.parent.parent;
-				if (isGroupProxy(s)) {
-					s = parent;
-					parent = getParentGroup(s);
-				}
-				model.graph.walkOutgoingConnections(s, x -> trace('Missing transition information on ${x}'), (trigger, targetState) -> {
-					var sourceStateName = getStateShapeName(s);
-					var targetStateName = getStateShapeName(targetState);
-					if (triggers.exists(trigger)) {
-						Context.fatalError('Overlapping triggers ${trigger} on ${content}', Context.currentPos());
+			trace('Walking all triggers here and up ${currentNode.name}');
+			var s = currentNode;
+			while (s != null) {
+				trace('\tWalking node ${s.name}');
+				var parent = s.parent;
+				s.walkOutgoingNonChildren((trigger) -> {
+					var targetState = trigger.target;
+					var sourceStateName = s.name;
+					var targetStateName = targetState.name;
+
+					trace('Walking transition ${sourceStateName} -> ${trigger.name} -> ${targetStateName}');
+
+					if (triggers.exists(trigger.name)) {
+						Context.fatalError('Overlapping triggers ${trigger} on ${currentNode.name}', Context.currentPos());
 					} else {
-						triggers.set(trigger,true);
+						triggers.set(trigger.name,true);
 					}
 
 					var blockArray = new Array<Expr>();
@@ -315,37 +332,37 @@ class StateMachineBuilder {
 					blockArray.push(exprCall("onExit" + sourceStateName, [exprID("trigger")]));
 
 					var leafState = getInitialLeaf(targetState);
-					var leafStateName = getStateShapeName(leafState);
+					var leafStateName = leafState.name;
 
-					var commonRoot = firstCommonAncestor(s, leafState);
-					var parent = getParentGroup(s);
+					var commonRoot = s.firstCommonAncestor( leafState);
+					var parent = s.parent;
 
 					while (parent != commonRoot && parent != null) {
-						var pName = getStateShapeName(parent);
+						var pName = parent.name;
 						blockArray.push(exprCall("onExit" + pName, [exprID("trigger")]));
 						exited.push(pName);
-						parent = getParentGroup(parent);
+						parent = parent.parent;
 					}
 
 
 					// Does the arc fire now?
 					blockArray.push(exprCall("onTraverse", [exprID("trigger")]));
 
-					var walkList = new Array<Xml>();
+					var walkList = new Array<NodeGraphNode>();
 
-					parent = getParentGroup(leafState);
+					parent = leafState.parent;
 					while (parent != commonRoot && parent != null) {
 						walkList.push(parent);
-						parent = getParentGroup(parent);
+						parent = parent.parent;
 					}
 
 					walkList.reverse();
 
 					for (targetAncestor in walkList) {
 						for (exit in exited) {
-							blockArray.push(exprCall("onEnterFrom" + getStateShapeName(targetAncestor), [exprID("S_" + exit)]));
+							blockArray.push(exprCall("onEnterFrom" + targetAncestor.name, [exprID("S_" + exit)]));
 						}
-						blockArray.push(exprCall("onEnterBy" + getStateShapeName(targetAncestor), [exprID("T_" + trigger)]));
+						blockArray.push(exprCall("onEnterBy" + targetAncestor.name, [exprID("T_" + trigger.name)]));
 					}
 					// TBD Support multiple machines
 					blockArray.push(Exprs.assign(exprID("_state0"), exprID("S_" + leafStateName)));
@@ -354,8 +371,8 @@ class StateMachineBuilder {
 						blockArray.push(exprCall("onEnterFrom" + leafStateName, [exprID("S_" + exit)]));
 					}
 
-					blockArray.push(exprCall("onEnterBy" + leafStateName, [exprID("T_" + trigger)]));
-					var tc:Case = {values: [Exprs.at(EConst(CIdent("T_" + trigger)))], expr: Exprs.toBlock(blockArray)};
+					blockArray.push(exprCall("onEnterBy" + leafStateName, [exprID("T_" + trigger.name)]));
+					var tc:Case = {values: [Exprs.at(EConst(CIdent("T_" + trigger.name)))], expr: Exprs.toBlock(blockArray)};
 					triggerCases.push(tc);
 				});
 				s = parent;
@@ -363,7 +380,7 @@ class StateMachineBuilder {
 
 			var triggerSwitch = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("trigger"))), triggerCases, EBlock([]).at()));
 
-			var stateCasec:Case = {values: [Exprs.at(EConst(CIdent("S_" + content)))], expr: triggerSwitch};
+			var stateCasec:Case = {values: [Exprs.at(EConst(CIdent("S_" + currentNode.name)))], expr: triggerSwitch};
 			stateCases.push(stateCasec);
 		}
 
@@ -376,8 +393,9 @@ class StateMachineBuilder {
 	
 		var swBlockArray = new Array<Expr>();
 
+		var defaultStates = [getDefaultState(graph)];
 
-		for (i in 0...model.defaultStates.length) {
+		for (i in 0...defaultStates.length) {
 			var sw = Exprs.at(ESwitch(Exprs.at(EConst(CIdent("_state" + i))), stateCases, Exprs.at(EThrow(Exprs.at(EConst(CString("State not found")))))));
 			swBlockArray.push(sw);
 		}
@@ -404,35 +422,31 @@ class StateMachineBuilder {
 		cb.addMember(fireFunc);
 	}
 
-	static function buildIsInFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+	static function buildIsInFunction(cb:tink.macro.ClassBuilder, model:NodeGraph) {
 		var blockArray = new Array<Expr>();
 
 		blockArray.push(exprIf(exprEq(exprID("_state0"), exprID("state")), macro return true));
 
 		var cases = new Array<Case>();
 
-		for (s in model.stateShapes) {
-			if (isGroupNode(s) )
-				continue;
-			var content = getStateShapeName(s);
-			if (content == null)
-				continue;
+		for (s in model.nodes) {
+			if (!isValidLeafNode(s)) continue;
 			
-			var parent = getParentGroup(s);
-			if (isGroupProxy(s)) parent = getParentGroup(parent);
-			if (parent == null || isEmpty(getStateShapeName(parent)))
-				continue;
-
 			var subcases = new Array<Case>();
+			var parent = s.parent;
 
-			while (parent != null && isGroupNode(parent)) {
-				var c:Case = {values: [exprID("S_" + getStateShapeName(parent))], expr: macro return true};
+			while (parent != null) {
+				var c:Case = {values: [exprID("S_" + parent.name)], expr: macro return true};
 				subcases.push(c);
 
-				parent = getParentGroup(parent);
+				parent = parent.parent;
 			}
 
-			var theCase:Case = {values: [Exprs.at(EConst(CIdent("S_" + getStateShapeName(s))))], expr: Exprs.at(ESwitch(exprID("state"), subcases, EBlock([]).at()))};
+			var caseExpr = subcases.length > 0 ? 
+				Exprs.at(ESwitch(exprID("state"), subcases, EBlock([]).at())) :
+				macro return false;
+			
+			var theCase:Case = {values: [Exprs.at(EConst(CIdent("S_" + s.name)))], expr: caseExpr};
 			cases.push(theCase);
 		}
 
@@ -452,10 +466,11 @@ class StateMachineBuilder {
 		});
 	}
 
-	static function buildFireStrFunction(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+	static function buildFireStrFunction(cb:tink.macro.ClassBuilder, graph:NodeGraph) {
 		var cases = new Array<Case>();
 
-		for (t in model.transitionNames) {
+		var transitionNames = graph.gatherTransitionNames();
+		for (t in transitionNames) {
 			var c:Case = {values: [exprConstString(t)], expr: Exprs.at(ECall(Exprs.at(EConst(CIdent("fire"))), [Exprs.at(EConst(CIdent("T_" + t)))]))};
 			cases.push(c);
 		}
@@ -510,11 +525,12 @@ class StateMachineBuilder {
 	return null;
 }
 
-	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, actions : ActionMaps, model:StateMachineModel, allowListeners : Bool) {
+	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, actions : ActionMaps, model:NodeGraph, allowListeners : Bool) {
 
 		var caseArray = new Array<Case>();
 		var transitionExpr = exprID("transition");
-		for (t in model.transitionNames) {
+		var transitionNames = model.gatherTransitionNames();
+		for (t in transitionNames) {
 			var transitionNameExpr = exprID("T_" + t);
 
 			var handlerArray = new Array<Expr>();
@@ -528,7 +544,8 @@ class StateMachineBuilder {
 
 		cb.addMember(makeMemberFunction("onTraverse", Functions.func(ESwitch(transitionExpr,caseArray,  null).at(), [Functions.toArg("transition", macro:Int)], null, null, false ), [AInline, AFinal]));
 
-		for (s in model.stateNames) {
+		for (n in model.nodes) {
+			var s = n.name;
 			var stateNameExpr = exprID("S_" + s);
 			var triggerExpr = exprID("trigger");
 			var stateExpr = exprID("state");
@@ -572,10 +589,10 @@ class StateMachineBuilder {
 		}
 	}
 
-	@:persistent static var _machines = new Map<String, StateMachineModel>();
+	@:persistent static var _machines = new Map<String, NodeGraph>();
 	@:persistent static var _fileDates = new Map<String, Date>();
 
-	static function getMachine(path:String, machine:String):StateMachineModel {
+	static function getGraph(path:String, machine:String):NodeGraph {
 		var key = path + "_" + machine;
 		var m = _machines.get(key);
 
@@ -583,10 +600,10 @@ class StateMachineBuilder {
 		if (m != null && _fileDates.exists(path) && _fileDates[path].getUTCSeconds() == stat.mtime.getUTCSeconds()){
 			return _machines.get(key);
 		}
-		var smArray = Visio.read(path);
-		for (sm in smArray) {
-			var key = path + "_" + sm.name;
-			_machines[key] = sm;
+		var nodeDoc = NodeDocReader.loadPath(path);
+		for (p in nodeDoc) {
+			var key = path + "_" + p.name;
+			_machines[key] = NodeGraphReader.fromPage(p);
 		}
 		_fileDates[path] = stat.mtime;
 		m = _machines.get(key);
@@ -603,13 +620,14 @@ class StateMachineBuilder {
 	}
 
 	static public function buildInterface(path:String, machine:String) {
-		var model = getMachine(path, machine);
+		var graph = getGraph(path, machine);
 
 		var fields = new Array<Field>();
 
-		for (s in model.stateNames) {
+		for (n in graph.nodes) {
 			var x:Function = {args: [Functions.toArg("trigger", macro:Int)]};
 
+			var s = n.name;
 			fields.push(makeMemberFunction("onEnterBy" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int), Functions.toArg("trigger", macro:Int)]}, []));
 			fields.push(makeMemberFunction("onExit" + s, {ret: macro:Void, args: [Functions.toArg("state", macro:Int), Functions.toArg("trigger", macro:Int)]}, []));
 			fields.push(makeMemberFunction("onEnterFrom" + s, {ret: macro:Void, args: [Functions.toArg("from", macro:Int), Functions.toArg("to", macro:Int)]}, []));
@@ -626,28 +644,56 @@ class StateMachineBuilder {
 		return [];
 	}
 
-	static function getDefaultStateName(model:StateMachineModel) {
-		var defaultName = model.defaultStates[0];
 
-		var node = model.getStateNode(defaultName);
-		
-		var leafState = getInitialLeaf(node);
-		var leafStateName = getStateShapeName(leafState);
-
-		return "S_" + leafStateName;
+	static function initialChild(node : NodeGraphNode) {
+		return node.getChildren().find((x) -> x.properties.exists('initial'));
 	}
-	static function buildConstructor(cb:tink.macro.ClassBuilder, model:StateMachineModel) {
+
+	static function getInitialLeaf(node : NodeGraphNode) {
+		if (node.hasChildren()) {
+			var x = node.getChildren().find((x) -> x.properties.exists('initial'));
+			if (x != null) return getInitialLeaf(x);
+			throw ('No initial state for node ${node.name}');	
+		}
+		return node;
+	}
+
+
+	static function getNameEnumStateName(node : NodeGraphNode) {
+		return "S_" + node.name;
+	}
+
+	
+	static function getDefaultState(graph:NodeGraph) {
+		var defaultState = graph.nodes.find((x) -> x.properties.exists("default") || x.properties.exists("root") && x.parent == null);
+		if (defaultState == null) Context.fatalError('No default state in graph', Context.currentPos());
+		var defaultName = defaultState.name;
+
+		var leafState = defaultState;
+		var lastLeafState = leafState;
+
+		while ((leafState = initialChild(leafState)) != null) {
+			lastLeafState = leafState;
+		}
+
+		return lastLeafState;
+	}
+	static function getDefaultStateName(graph:NodeGraph) {
+		return getNameEnumStateName(getDefaultState(graph));
+	}
+
+	static function buildConstructor(cb:tink.macro.ClassBuilder, model:NodeGraph) {
 		var con = cb.getConstructor();
 
-		Context.fatalError( "Unsupported atm", Context.currentPos() );
+		Context.fatalError( "Automatic constructor generation is unsupported atm", Context.currentPos() );
 
 		con.init("_state0", Context.currentPos(), Value(exprID(getDefaultStateName(model))));
 		con.publish();
 	}
 
-	static function buildInitFunction(cb:tink.macro.ClassBuilder,  actions : ActionMaps, model:StateMachineModel) {
+	static function buildInitFunction(cb:tink.macro.ClassBuilder,  actions : ActionMaps, graph:NodeGraph) {
 
-		var xx = exprID(getDefaultStateName(model));
+		var xx = exprID(getDefaultStateName(graph));
 
 		var blockList = new Array<Expr>();
 		//manual initialization due to weird network hxbit behaviour
@@ -655,18 +701,17 @@ class StateMachineBuilder {
 		blockList.push(macro _triggerQueue = new Array<Int>() );
 		blockList.push(macro _inTransition = false );
 		
-		var curState = getRootNode( model.getStateNode(model.defaultStates[0]));
+		var curState = getDefaultState(graph).root();
 		while (curState != null) {
-			var stateNodeName = getRawStateShapeName( curState );
 
-			if (actions.entry.exists(stateNodeName)) {
-				var stateNameExpr = exprID(getNameEnumName(stateNodeName));
-				for (a in actions.entry[stateNodeName])
+			if (actions.entry.exists(curState.name)) {
+				var stateNameExpr = exprID(getNameEnumStateName(curState));
+				for (a in actions.entry[curState.name])
 					blockList.push(exprCallField(a,stateNameExpr));
 			}
 
-			if (isGroupNode(curState)) {
-				curState = getGroupInitialState(curState);
+			if (curState.hasChildren()) {
+				curState = initialChild(curState);
 			} else {
 				curState = null;
 			}
@@ -682,7 +727,7 @@ class StateMachineBuilder {
 //		con.publish();
 	}
 
-	static function buildResetFunction(cb:tink.macro.ClassBuilder,  actions : ActionMaps, model:StateMachineModel) {
+	static function buildResetFunction(cb:tink.macro.ClassBuilder,  actions : ActionMaps, model:NodeGraph) {
 
 		var defStateName = getDefaultStateName(model);
 		var xx = exprID(defStateName);
@@ -711,7 +756,7 @@ class StateMachineBuilder {
 
 		//trace("Building state machine " + Context.getLocalClass().get().name);
 
-		var model = getMachine(path, machine);
+		var model = getGraph(path, machine);
 
 		var cm = Context.getLocalClass().get().meta.get().toMap();
 		var signals = cm.exists(":sm_signals");
@@ -756,7 +801,7 @@ class StateMachineBuilder {
 
 	macro static public function overlay(path:String, machine:String, print:Bool):Array<Field> {
 		var cb = new tink.macro.ClassBuilder();
-		var model = getMachine(path, machine);
+		var model = getGraph(path, machine);
 
 		return cb.export(print);
 	}

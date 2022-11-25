@@ -1,0 +1,7 @@
+--class-path src
+--class-path test
+--library tink_macro
+-lib hgraphdoc
+-lib haxe-strings
+-hl bin/sm.hl
+--main TestSM
