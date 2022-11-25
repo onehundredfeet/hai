@@ -38,9 +38,15 @@ class PrintAST {
             case BAll(actions):"All";
             case BFirst(methods):"First";
             case BAction:"Action";
+            case BInstance(name): "Instance";
         }
 
-        buf.add('Behaviour [${bTypeStr}]\n');
+        var extraStr = switch(b) {
+            case BInstance(name): name;
+            default:"";
+        }
+
+        buf.add('Behaviour [${bTypeStr}] ${extraStr}\n');
 
         switch(b) {
             case BAbstract(methods), BFirst(methods):
@@ -49,6 +55,7 @@ class PrintAST {
             case BSequence(actions), BAll(actions):
                 for(a in actions) 
                     nodeToString(buf, a, indent + 1);
+            case BInstance(name):
             default:
         }
     }

@@ -4,6 +4,7 @@ import gdoc.NodeDocReader;
 import gdoc.NodeDoc;
 import gdoc.NodeGraph;
 import ai.bmn.BMNAST;
+import haxe.ds.StringMap;
 using StringTools;
 using Lambda;
 
@@ -78,7 +79,6 @@ class ASTBuilder {
     }
 
     static function conformsToTreeNode(x : NodeGraphNode){
-
         if (x.numChildren() == 3 && x.hasChild("RUNNING") && x.hasChild("SUCCEEDED") && x.hasChild("FAILED")) {
             return true;
         }
@@ -132,6 +132,55 @@ class ASTBuilder {
             default : null;
         }
     }
+    
+
+    static function walkNodesTopDownState( s : State, f : (Node)->Void) {
+        switch(s) {
+            case SBehaviour(running, succeeded, failed):
+                walkNodesTopDown(running, f);
+            case SParent(children):
+                for(c in children) {
+                    walkNodesTopDownState(c, f);
+                }
+            default:
+        }    
+    }
+
+    static function walkNodesTopDown(node : Node, f : (Node)->Void) {
+        f(node);
+        
+        if (node.behaviour != null) {
+            switch(node.behaviour) {
+                case BAbstract(methods),BFirst(methods):
+                    for (m in methods)
+                        walkNodesTopDown(m, f);
+                case BSequence(actions), BAll(actions):
+                    for (a in actions)
+                        walkNodesTopDown(a, f);
+                default:
+            }    
+        }
+
+        if (node.state != null) {
+            walkNodesTopDownState(node.state, f);
+        }
+    }
+
+    static function fixReferences(declarationMap :StringMap<Declaration> , node : Node) {
+        
+        walkNodesTopDown(node, (n) -> {
+            if (n.behaviour != null) {
+                switch(n.behaviour) {
+                    case BAction:
+                        if (declarationMap.exists(n.name)) {
+                            n.behaviour = BInstance(n.name);
+                        }
+                    default:
+                }
+            }
+        });
+    }
+
     public static function buildAST( graph : NodeGraph, root : NodeGraphNode) : Tree {
         // global declarations
         var declarations = graph.nodes.filter( (x) -> {
@@ -149,6 +198,18 @@ class ASTBuilder {
             default: null;
         } : null;
         
+        var declarationMap = new StringMap<Declaration>();
+        for (d in declarations) declarationMap.set(d.name, d);
+
+        // second pass
+        for (d in declarations) {
+            switch(d.kind) {
+               case  DStateMachine( root), DBehaviourTree( root):
+                fixReferences(declarationMap, root);
+                    default:
+            }
+        }
+
         
         return {root: root, declarations : declarations};
     }

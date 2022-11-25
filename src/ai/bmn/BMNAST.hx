@@ -89,6 +89,7 @@ enum Behaviour {
     BSequence(actions:Array<Node>);
     BAll(actions:Array<Node>);
     BFirst(methods:Array<Node>);
+    BInstance(name:String);
     BAction();
 }
 
