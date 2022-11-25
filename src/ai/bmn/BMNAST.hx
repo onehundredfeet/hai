@@ -97,7 +97,8 @@ typedef Node = {
     name : String,
     behaviour : Behaviour,
     ?state: State,
-    ?precondition: Condition
+    ?precondition: Condition,
+    ?abstractBranch:Bool
 }
 
 /*

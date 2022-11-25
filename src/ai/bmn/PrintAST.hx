@@ -62,7 +62,7 @@ class PrintAST {
 
     static function nodeToString( buf : StringBuf, n : Node, indent : Int ) {
         addIndent(buf, indent);
-        buf.add('Node ${n.name}\n');
+        buf.add('Node ${n.name} ${(n.abstractBranch != null && n.abstractBranch) ? "Abstract" : ""}\n');
         if (n.state != null) {
             stateToString(buf, n.state, indent + 1);
            
