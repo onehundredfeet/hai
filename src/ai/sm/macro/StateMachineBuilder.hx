@@ -307,17 +307,17 @@ class StateMachineBuilder {
 			var triggers = new Map<String, Bool>();
 			var triggerCases = new Array<Case>();
 
-			trace('Walking all triggers here and up ${currentNode.name}');
+//			trace('Walking all triggers here and up ${currentNode.name}');
 			var s = currentNode;
 			while (s != null) {
-				trace('\tWalking node ${s.name}');
+//				trace('\tWalking node ${s.name}');
 				var parent = s.parent;
 				s.walkOutgoingNonChildren((trigger) -> {
 					var targetState = trigger.target;
 					var sourceStateName = s.name;
 					var targetStateName = targetState.name;
 
-					trace('Walking transition ${sourceStateName} -> ${trigger.name} -> ${targetStateName}');
+//					trace('Walking transition ${sourceStateName} -> ${trigger.name} -> ${targetStateName}');
 
 					if (triggers.exists(trigger.name)) {
 						Context.fatalError('Overlapping triggers ${trigger} on ${currentNode.name}', Context.currentPos());
