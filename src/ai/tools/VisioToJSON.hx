@@ -1,5 +1,5 @@
 package ai.tools;
-
+#if false 
 import sys.io.File;
 import haxe.Json;
 import tink.core.Pair;
@@ -110,3 +110,5 @@ class VisioToJSON {
 		File.saveContent("out.json", Json.stringify(pages, null, "\t"));
 	}
 }
+
+#end

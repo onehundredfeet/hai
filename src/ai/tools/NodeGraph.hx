@@ -1,5 +1,5 @@
 package ai.tools;
-
+#if false 
 import haxe.ds.StringMap;
 
 
@@ -24,9 +24,11 @@ class NodeGraphNode {
 
     }
 
-    public function getChildren() : Array<NodeGraphNode> {
-        return outgoing.filter((x)->x.name == "_CHILD").map((x)->x.target);
+    public function getConnectedBy(relation: String) : Array<NodeGraphNode> {
+        return outgoing.filter((x)->x.name == relation).map((x)->x.target);
     }
+
+    public function getChildren() return getConnectedBy("_CHILD");
 }
 
 class NodeGraph {
@@ -44,3 +46,4 @@ class NodeGraph {
 
     var _nodes = new Array<NodeGraphNode>();
 }
+#end

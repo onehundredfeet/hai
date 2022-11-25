@@ -1,5 +1,7 @@
 package ai.tools;
 
+#if false 
+
 import ai.tools.NodeGraph;
 import ai.tools.NodeDoc;
 import haxe.ds.IntMap;
@@ -62,3 +64,4 @@ class NodeGraphReader {
         return null;
     }
 }
+#end

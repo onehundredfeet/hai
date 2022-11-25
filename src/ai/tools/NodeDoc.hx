@@ -1,5 +1,5 @@
 package ai.tools;
-
+#if false 
 import sys.io.File;
 import haxe.Json;
 
@@ -29,3 +29,4 @@ typedef NodeDoc = Array<NodeDocPage>;
 function loadNodeDoc( path : String ) : NodeDoc {
     return Json.parse(File.getContent(path));
 }
+#end

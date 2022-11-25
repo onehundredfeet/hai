@@ -1,5 +1,5 @@
 package ai.tools;
-
+#if false 
 class XmlDescendentIterator  {
     var _nodes : Array<Xml>;
 
@@ -26,3 +26,4 @@ class XmlDescendentIterator  {
     }
   }
   
+#end
