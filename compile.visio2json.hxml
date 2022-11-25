@@ -2,5 +2,6 @@
 --class-path test
 --library tink_macro
 -lib haxe-strings
+-lib hgraphdoc
 -hl bin/hai_visio2json.hl
 --main ai.tools.VisioToJSON

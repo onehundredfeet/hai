@@ -1,10 +1,12 @@
 import ai.tools.NodeGraphReader;
 import sys.io.File;
-import ai.tools.NodeDoc;
+import gdoc.NodeGraph;
+import gdoc.NodeDoc;
+import gdoc.NodeGraphReader;
 
 class TestGraphJSON {
 
-    static function dumpGraph( graph : ai.tools.NodeGraph) {
+    static function dumpGraph( graph : NodeGraph) {
         trace('Nodes');
         for (n in graph.nodes) {
             trace("\t" + n.name);
