@@ -815,8 +815,10 @@ class StateMachineBuilder {
 	
 	// Need to be called by implementing class
 	// __state_init()
-	// __state_tick(delta:Float, time:Float)
 	// __state_reset()
+
+	// @:sm_tick will add this function
+	// __state_tick(delta:Float, time:Float)
 
 	// Can be called by anyone
 	// fire()
