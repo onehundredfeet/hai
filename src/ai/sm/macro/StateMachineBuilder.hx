@@ -34,7 +34,8 @@ typedef ActionMaps = {
     entryFrom : Map<String, Array<FieldTransition>>,
     exit :  Map<String, Array<Field>>,
 	globalEntry: Array<Field>,
-	globalExit: Array<Field>
+	globalExit: Array<Field>,
+	whiles : Map<String, Array<Field>>
 }
 
 
@@ -158,8 +159,10 @@ class StateMachineBuilder {
 		}
 
 		if (signals) {
+			
 			for (n in model.nodes) {
 				var name = 'sig${n.name}';
+				
 				
 				var sigMember = {
 					name: name,
@@ -249,46 +252,30 @@ class StateMachineBuilder {
 		var exitMap = new Map<String, Array<Field>>();
 		var entryGlobals = new Array<Field>();
 		var exitGlobals = new Array<Field>();
-
+		var whileMap = new Map<String, Array<Field>>();
 		//		trace('Examining: ${Context.getLocalClass().get().name}');
 		//		trace('Num Fields: ${Context.getLocalClass().get().fields.get().length}');
 		//		trace('Build Fields: ${Context.getBuildFields().length}');
 		for (field in Context.getBuildFields()) {
+			var mmap = field.meta.toMap();
+
+			var whilesMeta = field.meta.getValues(":while");
+			var hasWhile = whilesMeta != null && whilesMeta.length > 0;
+			var whiles = whilesMeta.map((x) -> if (x != null) x.map((y) -> y.getIdent().sure()) else []).flatten();
+			var whileStr = if (hasWhile) "while " + whiles else "";
+
 			switch (field.kind) {
 				case FFun(fun):
-					var mmap = field.meta.toMap();
 //					var enter = mmap.get(":enter");
 
 					addActions(traverseMap, mmap.get(":traverse"), field);
 					addActions(entryMap, mmap.get(":enter"), field);
 					addActions(exitMap, mmap.get(":exit"), field);
+					addActions(whileMap, mmap.get(":while"), field);
 					addGlobals(entryGlobals, mmap.get(":enter"), field);
 					addGlobals(exitGlobals, mmap.get(":exit"), field);
 					addConditionalActions(entryByMap, mmap.get(":enterby"), field);
 					addConditionalActions(entryFromMap, mmap.get(":enterfrom"), field);
-
-					/*
-					var exit = mmap.get(":exit");
-					var by = mmap.get(":enterby");
-					var from = mmap.get(":enterfrom");
-					var traverse = mmap.get(":traverse");
-
-					if (enter != null || exit != null || by != null || from != null || traverse != null) {
-						var x = {
-							entries: enter,
-							exits: exit,
-							bys: by,
-							froms: from
-						}
-					}
-					if (enter != null) {
-						for (se in enter) {
-							for (p in se) {
-								//trace('s:${Exprs.getIdent(p).orNull()}');
-							}
-						}
-					}
-					*/
 				default:
 					continue;
 			}
@@ -301,7 +288,8 @@ class StateMachineBuilder {
 			entryFrom: entryFromMap,
 			exit: exitMap,
 			globalExit: exitGlobals,
-			globalEntry: entryGlobals
+			globalEntry: entryGlobals,
+			whiles: whileMap
 		};
 	}
 
@@ -774,7 +762,7 @@ class StateMachineBuilder {
 		}
 
 		var ff = EBlock(blockList).at().func([], false);
-		cb.addMember( makeMemberFunction("__reset_graph", ff, [AFinal]) );
+		cb.addMember( makeMemberFunction("__state_reset", ff, [AFinal]) );
 
 //		con.init("_state0", Context.currentPos(), Value(exprID("S_" + model.defaultStates[0])));
 //		con.publish();
@@ -783,6 +771,57 @@ class StateMachineBuilder {
 	static function buildSignalFunctions(cb:tink.macro.ClassBuilder, model:NodeGraph) {
 		
 	}
+
+	static function buildTickFunction( cb:tink.macro.ClassBuilder, model:NodeGraph,  actions : ActionMaps, signals:Bool) {
+		var blockList = new Array<Expr>();
+
+		var whiles = actions.whiles;
+
+
+		for (ws in whiles.keyValueIterator()) {
+			var stateName = ws.key;
+			var fcalls = ws.value.map(function(f) return exprID(f.name).call( [exprID("delta"), exprID("time")]));
+			
+			var stateNameExpr = exprID("S_" + stateName);
+			var gn = model.nodes.find((x) -> x.name == stateName);
+
+			for (a in ws.value) {
+				if (gn.hasChildren()) {
+					blockList.push(
+						macro if (isIn($stateNameExpr)) {
+							$a{fcalls};
+						}
+					);
+				} else {
+					blockList.push(
+						macro if (_state0 == $stateNameExpr) {
+							$a{fcalls};
+						}
+					);
+				}
+				}
+
+		}
+
+		var ff = EBlock(blockList).at().func([
+			"delta".toArg(macro:Float),
+			"time".toArg(macro:Float)
+		], false);
+		cb.addMember( makeMemberFunction("__state_tick", ff, [AFinal]) );
+	}
+
+
+	// Generates Functions:
+	
+	// Need to be called by implementing class
+	// __state_init()
+	// __state_tick(delta:Float, time:Float)
+	// __state_reset()
+
+	// Can be called by anyone
+	// fire()
+	// fireStr()
+	// isIn()
 
 	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool):Array<Field> {
 
@@ -793,6 +832,7 @@ class StateMachineBuilder {
 		var cm = Context.getLocalClass().get().meta.get().toMap();
 		var signals = cm.exists(":sm_signals");
 		var debug = cm.exists(":sm_debug");
+		var ticking = cm.exists(":sm_tick");
 
 		var cb = new tink.macro.ClassBuilder();
 
@@ -805,7 +845,9 @@ class StateMachineBuilder {
 		buildFireFunction(cb, model);
 		buildIsInFunction(cb, model);
 		buildFireStrFunction(cb, model);
-
+		if (ticking) {
+			buildTickFunction(cb,model, actions, signals);
+		}
 		if (makeInterface) {
 			buildInterface(path, machine);
 		}
