@@ -1,19 +1,12 @@
 package ai.sm.macro;
 
-import tink.core.Pair;
 #if macro
 import haxe.macro.ComplexTypeTools;
-import tink.macro.Ops.Binary;
-import tink.macro.Exprs.VarDecl;
-import haxe.macro.MacroStringTools;
-import tink.macro.Ops.Unary;
-import tink.macro.ConstParam;
+
 import haxe.macro.Printer;
 import haxe.macro.Context;
 import haxe.macro.Expr;
-import tink.macro.Member;
 import ai.macro.MacroTools;
-import gdoc.NodeDoc;
 import gdoc.NodeGraph;
 import gdoc.NodeDocReader;
 import gdoc.NodeGraphReader;
@@ -29,12 +22,16 @@ typedef StateAction = {
 	entryfroms:Array<String>
 }
 
+typedef FieldTransition = {
+	field:Field,
+	transition:String
+}
 
 typedef ActionMaps = {
 	entry : Map<String, Array<Field>>,
 	traverse: Map<String, Array<Field>>,
-    entryBy : Map<String, Array<Pair<Field, String>>>,
-    entryFrom : Map<String, Array<Pair<Field, String>>>,
+    entryBy : Map<String, Array<FieldTransition>>,
+    entryFrom : Map<String, Array<FieldTransition>>,
     exit :  Map<String, Array<Field>>,
 	globalEntry: Array<Field>,
 	globalExit: Array<Field>
@@ -93,7 +90,7 @@ class StateMachineBuilder {
 		}
 	}
 
-	static function buildVars(cb:tink.macro.ClassBuilder, model:NodeGraph, allowListeners: Bool) {
+	static function buildVars(cb:tink.macro.ClassBuilder, model:NodeGraph, allowListeners: Bool, signals:Bool) {
 
 		cb.addMember( {
 			name: "_inTransition",
@@ -130,7 +127,6 @@ class StateMachineBuilder {
 
 		cb.addMember(Member.prop("state", macro:Int, Context.currentPos(), false, true));
 		cb.addMember(Member.getter("state", null, macro  _state0, macro:Int));
-
 		cb.addMember(Member.prop("stateName", macro:String, Context.currentPos(), false, true));
 
 		var cases = new Array<Case>();
@@ -159,6 +155,24 @@ class StateMachineBuilder {
 			cb.addMember(listeneners);
 
 			cb.addMember(makeMemberFunction("addListener", Functions.func(macro _listeners.push(l), [Functions.toArg("l", ct)]), []));
+		}
+
+		if (signals) {
+			for (n in model.nodes) {
+				var name = 'sig${n.name}';
+				
+				var sigMember = {
+					name: name,
+					doc: null,
+					meta: [],
+					access: [APublic],
+					kind: FVar(macro :signals.Signal3<Int, Int, Bool>, macro new signals.Signal3<Int, Int, Bool>()),
+					pos: Context.currentPos()
+				};
+
+				cb.addMember(sigMember);
+
+			}
 		}
 	}
 
@@ -204,7 +218,7 @@ class StateMachineBuilder {
 		}
 	}
 
-	static function addConditionalActions(map:Map<String, Array<Pair<Field, String>>>, meta:Array<Array<Expr>>, f:Field) {
+	static function addConditionalActions(map:Map<String, Array<FieldTransition>>, meta:Array<Array<Expr>>, f:Field) {
 		if (meta == null)
 			return;
 		for (se in meta) {
@@ -214,12 +228,12 @@ class StateMachineBuilder {
 					var stateName =  cleanState(state.sure());
 
 					if (!map.exists(stateName))
-						map[stateName] = new Array<Pair<Field, String>>();
+						map[stateName] = new Array<FieldTransition>();
 
 					if (se.length >= 2 && Exprs.getIdent(se[1]).isSuccess()) {
-						map[stateName].push(new Pair(f, Exprs.getIdent(se[1]).sure()));
+						map[stateName].push({field:f, transition: Exprs.getIdent(se[1]).sure()});
 					} else {
-						map[stateName].push(new Pair(f, null));
+						map[stateName].push({field:f, transition:null});
 					}
 				}
 			}
@@ -230,8 +244,8 @@ class StateMachineBuilder {
 	static function getActions() : ActionMaps {
 		var entryMap = new Map<String, Array<Field>>();
 		var traverseMap = new Map<String, Array<Field>>();
-		var entryByMap = new Map<String, Array<Pair<Field, String>>>();
-		var entryFromMap = new Map<String, Array<Pair<Field, String>>>();
+		var entryByMap = new Map<String, Array<FieldTransition>>();
+		var entryFromMap = new Map<String, Array<FieldTransition>>();
 		var exitMap = new Map<String, Array<Field>>();
 		var entryGlobals = new Array<Field>();
 		var exitGlobals = new Array<Field>();
@@ -525,7 +539,7 @@ class StateMachineBuilder {
 	return null;
 }
 
-	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, actions : ActionMaps, model:NodeGraph, allowListeners : Bool) {
+	static public function buildEventFunctions(cb:tink.macro.ClassBuilder, actions : ActionMaps, model:NodeGraph, allowListeners : Bool, signals:Bool) {
 
 		var caseArray = new Array<Case>();
 		var transitionExpr = exprID("transition");
@@ -555,7 +569,7 @@ class StateMachineBuilder {
 					handlerArray.push(exprCallField(a,stateNameExpr, triggerExpr));
 			if (actions.entryBy.exists(s))
 				for (a in actions.entryBy[s])
-					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, stateNameExpr, triggerExpr) : exprIf(exprEq(triggerExpr, exprID("T_" + a.b)),  exprCallField(a.a,stateNameExpr, exprID("trigger"))));
+					handlerArray.push(isEmpty(a.transition) ? exprCallField(a.field, stateNameExpr, triggerExpr) : exprIf(exprEq(triggerExpr, exprID("T_" + a.transition)),  exprCallField(a.field,stateNameExpr, exprID("trigger"))));
 
 			if (allowListeners) {
 				var index = macro _listeners[i];
@@ -566,6 +580,13 @@ class StateMachineBuilder {
 			for (ge in actions.globalEntry) {
 				handlerArray.push(exprCallField(ge,stateNameExpr, triggerExpr));
 			}
+			
+			if (signals) {
+				var sigName = "sig" + s;
+				var x = macro $i{sigName}.dispatch( $i{"S_" + s}, trigger, true);
+				handlerArray.push(x);
+			}
+
 			cb.addMember(makeMemberFunction("onEnterBy" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)]), [AInline, AFinal]));
 			
 			handlerArray.resize(0);
@@ -576,16 +597,24 @@ class StateMachineBuilder {
 				var call = Exprs.at(EField(macro _listeners[i], "onExit" + s));
 				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, trigger)));
 			}
+			if (signals) {
+				var sigName = "sig" + s;
+				var x = macro $i{sigName}.dispatch( $i{"S_" + s}, trigger, false);
+				handlerArray.push(x);
+			}
 			cb.addMember(makeMemberFunction("onExit" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("trigger", macro:Int)]), [AInline, AFinal]));
 			handlerArray.resize(0);
 			if (actions.entryFrom.exists(s))
 				for (a in actions.entryFrom[s])
-					handlerArray.push(isEmpty(a.b) ? exprCallField(a.a, stateNameExpr,stateExpr, false) : exprIf(exprEq(exprID("state"), exprID("S_" + a.b)),  exprCallField(a.a,stateNameExpr,stateExpr, false)));
+					handlerArray.push(isEmpty(a.transition) ? exprCallField(a.field, stateNameExpr,stateExpr, false) : exprIf(exprEq(exprID("state"), exprID("S_" + a.transition)),  exprCallField(a.field,stateNameExpr,stateExpr, false)));
 			if (allowListeners) {
 				var call = Exprs.at(EField(macro _listeners[i], "onEnterFrom" + s));
 				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call( $stateNameExpr, state)));
 			}
+			
+			
 			cb.addMember(makeMemberFunction("onEnterFrom" + s, Functions.func(Exprs.toBlock(handlerArray), [Functions.toArg("state", macro:Int)]), [AInline, AFinal]));
+
 		}
 	}
 
@@ -751,6 +780,9 @@ class StateMachineBuilder {
 //		con.publish();
 	}
 
+	static function buildSignalFunctions(cb:tink.macro.ClassBuilder, model:NodeGraph) {
+		
+	}
 
 	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool):Array<Field> {
 
@@ -765,11 +797,11 @@ class StateMachineBuilder {
 		var cb = new tink.macro.ClassBuilder();
 
 		buildConstants(cb, model);
-		buildVars(cb, model, makeInterface);
+		buildVars(cb, model, makeInterface, signals);
 
 		var actions = getActions();
 
-		buildEventFunctions(cb, actions, model, makeInterface);
+		buildEventFunctions(cb, actions, model, makeInterface, signals);
 		buildFireFunction(cb, model);
 		buildIsInFunction(cb, model);
 		buildFireStrFunction(cb, model);
@@ -777,6 +809,8 @@ class StateMachineBuilder {
 		if (makeInterface) {
 			buildInterface(path, machine);
 		}
+
+
 
 		if (constructor) {
 			buildConstructor(cb, model);
