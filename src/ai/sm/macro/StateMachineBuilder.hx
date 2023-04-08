@@ -867,7 +867,10 @@ class StateMachineBuilder {
 			}
 		}
 
-		var swblock = ESwitch(exprID("_state0"), caseList, macro {}).at();
+		var swblock = EBlock([
+			macro __state_now = time,
+			ESwitch(exprID("_state0"), caseList, macro {}).at()
+		]).at();
 		var ff = swblock.func(["delta".toArg(macro :Float), "time".toArg(macro :Float)], false);
 		cb.addMember(makeMemberFunction("__state_tick", ff, [AFinal]));
 	}
