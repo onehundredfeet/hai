@@ -165,7 +165,7 @@ class StateMachineBuilder {
 					doc: null,
 					meta: [],
 					access: [APublic],
-					kind: FVar(macro :signals.Signal3<Int, Int, Bool>, macro new signals.Signal3<Int, Int, Bool>()),
+					kind: FVar(macro :hsig.Signal3<ai.sm.State, ai.sm.Transition, Bool>, macro new hsig.Signal3<ai.sm.State, ai.sm.Transition, Bool>()),
 					pos: Context.currentPos()
 				};
 
@@ -339,17 +339,17 @@ class StateMachineBuilder {
 			var triggers = new Map<String, Bool>();
 			var triggerCases = new Array<Case>();
 
-			//			trace('Walking all triggers here and up ${currentNode.name}');
+			//trace('Walking all triggers here and up ${currentNode.name}');
 			var s = currentNode;
 			while (s != null) {
-				//				trace('\tWalking node ${s.name}');
+				//trace('\tWalking node ${currentNode.name} : ${s.name}');
 				var parent = s.parent;
 				s.walkOutgoingNonChildren((trigger) -> {
 					var targetState = trigger.target;
 					var sourceStateName = s.name;
 					var targetStateName = targetState.name;
 
-					//					trace('Walking transition ${sourceStateName} -> ${trigger.name} -> ${targetStateName}');
+					//trace('\t\tWalking transition ${sourceStateName} -> ${trigger.name} -> ${targetStateName}');
 
 					if (triggers.exists(trigger.name)) {
 						Context.fatalError('Overlapping triggers ${trigger} on ${currentNode.name}', Context.currentPos());
@@ -360,18 +360,21 @@ class StateMachineBuilder {
 					var blockArray = new Array<Expr>();
 
 					var exited = new Array<String>();
-					exited.push(sourceStateName);
-					blockArray.push(exprCall("onExit" + sourceStateName, [exprID("trigger")]));
+					exited.push(currentNode.name);
+					blockArray.push(exprCall("onExit" + currentNode.name, [exprID("trigger")]));
+					//trace('\t\tBuilding on exit ${currentNode.name} by ${trigger.name} ');
 
 					var leafState = getInitialLeaf(targetState);
 					var leafStateName = leafState.name;
 
 					var commonRoot = s.firstCommonAncestor(leafState);
-					var parent = s.parent;
+					var parent = currentNode.parent; //s.parent;
 
 					while (parent != commonRoot && parent != null) {
 						var pName = parent.name;
 						blockArray.push(exprCall("onExit" + pName, [exprID("trigger")]));
+						//trace('\t\t\tAdding exit ${pName}');
+
 						exited.push(pName);
 						parent = parent.parent;
 					}
