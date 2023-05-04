@@ -12,6 +12,7 @@ import ai.common.TaskResult;
 using haxe.macro.MacroStringTools;
 using StringTools;
 using Lambda;
+using ai.macro.Extensions;
 
 import ai.macro.MacroTools;
 
@@ -21,10 +22,10 @@ class BTBuilder {
 			return;
 		for (se in meta) {
 			for (p in se) {
-				var state = Exprs.getIdent(p);
+				var state = p.getIdent();
 
-				if (state.isSuccess()) {
-					var stateName = cleanIdentifier(state.sure());
+				if (state != null) {
+					var stateName = cleanIdentifier(state);
 					if (!map.exists(stateName))
 						map[stateName] = new Array<Field>();
 					map[stateName].push(f);
