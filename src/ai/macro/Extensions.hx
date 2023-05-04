@@ -176,27 +176,29 @@ class Extensions {
 	}
 
 	static public inline function call(e:Expr, ?params, ?pos)
-		return at(ECall(e, params == null ? [] : params),pos);
+		return at(ECall(e, params == null ? [] : params), pos);
 
+	static public function getValues(m:Metadata, name:String)
+		return if (m == null) []; else [for (meta in m) if (meta.name == name) meta.params];
 	/*
-	static public function lazyComplex(f:Void->Type)
-		return
-		  TPath({
-			pack : ['tink','macro'],
-			name : 'DirectType',
-			params : [TPExpr(register(f).toExpr())],
-			sub : null,
-		  });
+		static public function lazyComplex(f:Void->Type)
+			return
+			  TPath({
+				pack : ['tink','macro'],
+				name : 'DirectType',
+				params : [TPExpr(register(f).toExpr())],
+				sub : null,
+			  });
 
-	static public function toComplex(type:Type, ?options:{ ?direct: Bool }):ComplexType {
-		var ret =
-		  if (options == null || options.direct != true)type.toComplexType();
-		  else null;
-		if (ret == null)
-		  ret = lazyComplex(function () return type);
-		return ret;
-	  }
-	  */
+		static public function toComplex(type:Type, ?options:{ ?direct: Bool }):ComplexType {
+			var ret =
+			  if (options == null || options.direct != true)type.toComplexType();
+			  else null;
+			if (ret == null)
+			  ret = lazyComplex(function () return type);
+			return ret;
+		  }
+	 */
 }
 
 class ExprExtensions {

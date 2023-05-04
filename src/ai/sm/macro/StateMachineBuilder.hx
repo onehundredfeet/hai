@@ -73,7 +73,7 @@ class StateMachineBuilder {
 		return func;
 	}
 
-	static function buildConstants( model:NodeGraph) : Array<Fields> {
+	static function buildConstantFields( model:NodeGraph) : Array<Field> {
 		var count = 0;
 		var fields = [];
 		for (ss in model.nodes) {
@@ -93,7 +93,7 @@ class StateMachineBuilder {
 		return fields;
 	}
 
-	static function buildVars( model:NodeGraph, actions:ActionMaps, allowListeners:Bool, signals:Bool, ticking:Bool, timers : Array<String>) : Array<Fields> {
+	static function buildVars( model:NodeGraph, actions:ActionMaps, allowListeners:Bool, signals:Bool, ticking:Bool, timers : Array<String>) : Array<Field> {
 		var fields = [];
 
 		fields.push({
@@ -294,7 +294,7 @@ class StateMachineBuilder {
 
 			var whilesMeta = field.meta.getValues(":while");
 			var hasWhile = whilesMeta != null && whilesMeta.length > 0;
-			var whiles = whilesMeta.map((x) -> if (x != null) x.map((y) -> y.getIdent().sure()) else []).flatten();
+			var whiles = whilesMeta.map((x) -> if (x != null) x.map((y) -> y.getIdent()) else []).flatten();
 			var whileStr = if (hasWhile) "while " + whiles else "";
 
 			switch (field.kind) {
@@ -435,7 +435,7 @@ class StateMachineBuilder {
 		var defaultStates = [getDefaultState(graph)];
 
 		for (i in 0...defaultStates.length) {
-			var sw = at(ESwitch(at(EConst(CIdent("_state" + i))), stateCases, at(EThrow(at(EConst(CString("State not found")))))));
+			var sw = ESwitch(EConst(CIdent("_state" + i)).at(), stateCases, EThrow(EConst(CString("State not found")).at()).at()).at();
 			swBlockArray.push(sw);
 		}
 
@@ -484,14 +484,14 @@ class StateMachineBuilder {
 				parent = parent.parent;
 			}
 
-			var caseExpr = subcases.length > 0 ? at(ESwitch(exprID("state"), subcases, EBlock([]).at())) : macro return false;
+			var caseExpr = subcases.length > 0 ? ESwitch(exprID("state"), subcases, EBlock([]).at()).at() : macro return false;
 
-			var theCase:Case = {values: [at(EConst(CIdent("S_" + s.name)))], expr: caseExpr};
+			var theCase:Case = {values: [EConst(CIdent("S_" + s.name)).at()], expr: caseExpr};
 			cases.push(theCase);
 		}
 
 		var throwExpr = macro throw 'State not found ${_state0}';
-		var sw = at(ESwitch(at(EConst(CIdent("_state0"))), cases, throwExpr));
+		var sw = ESwitch(EConst(CIdent("_state0")).at(), cases, throwExpr).at();
 
 		blockArray.push(sw);
 		blockArray.push(macro return false);
@@ -501,7 +501,7 @@ class StateMachineBuilder {
 			doc: null,
 			meta: [],
 			access: [APublic],
-			kind: FFun({args: [{name: "state", type: macro :Int}], expr: at(EBlock(blockArray))}),
+			kind: FFun({args: [{name: "state", type: macro :Int}], expr: EBlock(blockArray).at()}),
 			pos: Context.currentPos()
 		};
 	}
@@ -511,11 +511,11 @@ class StateMachineBuilder {
 
 		var transitionNames = graph.gatherTransitionNames();
 		for (t in transitionNames) {
-			var c:Case = {values: [exprConstString(t)], expr: at(ECall(at(EConst(CIdent("fire"))), [at(EConst(CIdent("T_" + t)))]))};
+			var c:Case = {values: [exprConstString(t)], expr:ECall(EConst(CIdent("fire")).at(), [EConst(CIdent("T_" + t)).at()]).at()};
 			cases.push(c);
 		}
 
-		var sw = at(ESwitch(at(EConst(CIdent("trigger"))), cases, at(EThrow(at(EConst(CString("Trigger not found")))))));
+		var sw = ESwitch(EConst(CIdent("trigger")).at(), cases, EThrow(EConst(CString("Trigger not found")).at()).at()).at();
 
 		var arg:FunctionArg = {name: "trigger", type: macro :String};
 		var fun:Function = {args: [arg], expr: sw};
@@ -565,6 +565,7 @@ class StateMachineBuilder {
 
 	static public function buildEventFunctions( actions:ActionMaps, model:NodeGraph, allowListeners:Bool, signals:Bool,
 			ticking:Bool) {
+		var fields = [];
 		var caseArray = new Array<Case>();
 		var transitionExpr = exprID("transition");
 		var transitionNames = model.gatherTransitionNames();
@@ -580,7 +581,7 @@ class StateMachineBuilder {
 		}
 
 		fields.push(makeMemberFunction("onTraverse",
-			.func(ESwitch(transitionExpr, caseArray, null).at(), [.toArg("transition", macro :Int)], null, null, false), [AInline, AFinal]));
+			ESwitch(transitionExpr, caseArray, null).at().func( ["transition".toArg( macro :Int)], null, null, false), [AInline, AFinal]));
 
 		for (n in model.nodes) {
 			var s = n.name;
@@ -598,7 +599,7 @@ class StateMachineBuilder {
 
 			if (allowListeners) {
 				var index = macro _listeners[i];
-				var call = at(EField(index, "onEnterBy" + s));
+				var call = EField(index, "onEnterBy" + s).at();
 				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call($stateNameExpr, trigger)));
 			}
 
@@ -626,7 +627,7 @@ class StateMachineBuilder {
 				}
 			}
 
-			fields.push(makeMemberFunction("onEnterBy" + s, .func(Exprs.toBlock(handlerArray), [.toArg("trigger", macro :Int)]),
+			fields.push(makeMemberFunction("onEnterBy" + s, handlerArray.toBlock().func( ["trigger".toArg( macro :Int)]),
 				[AInline, AFinal]));
 
 			handlerArray.resize(0);
@@ -634,7 +635,7 @@ class StateMachineBuilder {
 				for (a in actions.exit[s])
 					handlerArray.push(exprCallField(a, stateNameExpr, triggerExpr));
 			if (allowListeners) {
-				var call = at(EField(macro _listeners[i], "onExit" + s));
+				var call = EField(macro _listeners[i], "onExit" + s).at();
 				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call($stateNameExpr, trigger)));
 			}
 			if (signals) {
@@ -642,7 +643,7 @@ class StateMachineBuilder {
 				var x = macro $i{sigName}.dispatch($i{"S_" + s}, trigger, false);
 				handlerArray.push(x);
 			}
-			fields.push(makeMemberFunction("onExit" + s, .func(Exprs.toBlock(handlerArray), [.toArg("trigger", macro :Int)]),
+			fields.push(makeMemberFunction("onExit" + s, handlerArray.toBlock().func( ["trigger".toArg( macro :Int)]),
 				[AInline, AFinal]));
 			handlerArray.resize(0);
 			if (actions.entryFrom.exists(s))
@@ -650,22 +651,24 @@ class StateMachineBuilder {
 					handlerArray.push(isEmpty(a.transition) ? exprCallField(a.field, stateNameExpr, stateExpr,
 						false) : exprIf(exprEq(exprID("state"), exprID("S_" + a.transition)), exprCallField(a.field, stateNameExpr, stateExpr, false)));
 			if (allowListeners) {
-				var call = at(EField(macro _listeners[i], "onEnterFrom" + s));
+				var call = EField(macro _listeners[i], "onEnterFrom" + s).at();
 				handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call($stateNameExpr, state)));
 			}
 
-			fields.push(makeMemberFunction("onEnterFrom" + s, .func(Exprs.toBlock(handlerArray), [.toArg("state", macro :Int)]),
+			fields.push(makeMemberFunction("onEnterFrom" + s, handlerArray.toBlock().func(["state".toArg( macro :Int)]),
 				[AInline, AFinal]));
 		}
+		return fields;
 	}
 
 	@:persistent static var _machines = new Map<String, NodeGraph>();
 	@:persistent static var _fileDates = new Map<String, Date>();
 
 	static function getGraph(path:String, machine:String):NodeGraph {
-		var key = path + "_" + machine;
-		var m = _machines.get(key);
+		if (path == null) Context.fatalError("Path cannot be null", Context.currentPos());
 
+			var key = path + "_" + machine;
+		var m = _machines.get(key);
 		var stat:sys.FileStat = sys.FileSystem.stat(path);
 		if (m != null && _fileDates.exists(path) && _fileDates[path].getUTCSeconds() == stat.mtime.getUTCSeconds()) {
 			return _machines.get(key);
@@ -695,15 +698,15 @@ class StateMachineBuilder {
 		var fields = new Array<Field>();
 
 		for (n in graph.nodes) {
-			var x:Function = {args: [.toArg("trigger", macro :Int)]};
+			var x:Function = {args: ["trigger".toArg( macro :Int)]};
 
 			var s = n.name;
 			fields.push(makeMemberFunction("onEnterBy" + s,
-				{ret: macro :Void, args: [.toArg("state", macro :Int), .toArg("trigger", macro :Int)]}, []));
+				{ret: macro :Void, args: ["state".toArg( macro :Int), "trigger".toArg( macro :Int)]}, []));
 			fields.push(makeMemberFunction("onExit" + s,
-				{ret: macro :Void, args: [.toArg("state", macro :Int), .toArg("trigger", macro :Int)]}, []));
+				{ret: macro :Void, args: ["state".toArg( macro :Int), "trigger".toArg( macro :Int)]}, []));
 			fields.push(makeMemberFunction("onEnterFrom" + s,
-				{ret: macro :Void, args: [.toArg("from", macro :Int), .toArg("to", macro :Int)]}, []));
+				{ret: macro :Void, args: ["from".toArg( macro :Int), "to".toArg( macro :Int)]}, []));
 		}
 
 		Context.defineType({
@@ -755,6 +758,7 @@ class StateMachineBuilder {
 		return getNameEnumStateName(getDefaultState(graph));
 	}
 
+	/*
 	static function buildConstructor( model:NodeGraph) {
 		var con = cb.getConstructor();
 
@@ -762,7 +766,7 @@ class StateMachineBuilder {
 
 		con.init("_state0", Context.currentPos(), Value(exprID(getDefaultStateName(model))));
 		con.publish();
-	}
+	}*/
 
 	static function buildInitFunction( actions:ActionMaps, graph:NodeGraph, ticking:Bool, timers:Array<String>) {
 		var xx = exprID(getDefaultStateName(graph));
@@ -796,7 +800,7 @@ class StateMachineBuilder {
 		}
 
 		var ff = EBlock(blockList).at().func(ticking ? ["time".toArg(macro :Float)] : [], false);
-		fields.push(makeMemberFunction("__state_init", ff, [AFinal]));
+		return makeMemberFunction("__state_init", ff, [AFinal]);
 	}
 
 	static function buildResetFunction( actions:ActionMaps, model:NodeGraph, ticking:Bool, timers:Array<String>) {
@@ -822,7 +826,7 @@ class StateMachineBuilder {
 			blockList.push(macro __state_now = time);
 		}
 		var ff = EBlock(blockList).at().func(ticking ? ["time".toArg(macro :Float)] : [], false);
-		fields.push(makeMemberFunction("__state_reset", ff, [AFinal]));
+		return makeMemberFunction("__state_reset", ff, [AFinal]);
 
 		//		con.init("_state0", Context.currentPos(), Value(exprID("S_" + model.defaultStates[0])));
 		//		con.publish();
@@ -879,7 +883,7 @@ class StateMachineBuilder {
 			ESwitch(exprID("_state0"), caseList, macro {}).at()
 		]).at();
 		var ff = swblock.func(["delta".toArg(macro :Float), "time".toArg(macro :Float)], false);
-		fields.push(makeMemberFunction("__state_tick", ff, [AFinal]));
+		return makeMemberFunction("__state_tick", ff, [AFinal]);
 	}
 
 	// Generates Functions:
@@ -907,7 +911,7 @@ class StateMachineBuilder {
 		var ticking = cm.exists(":sm_tick");
 
 
-		var constantFields : Array<Field> = buildConstants( model);
+		var constantFields : Array<Field> = buildConstantFields( model);
 		var actions = getActions();
 
 		var timers = [];
@@ -928,7 +932,7 @@ class StateMachineBuilder {
 		}
 
 		if (constructor) {
-			buildConstructor( model);
+// /			buildConstructor( model);
 		} else {
 			fields.push(buildInitFunction( actions, model, ticking, timers));
 		}
