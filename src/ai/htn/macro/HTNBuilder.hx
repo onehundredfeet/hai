@@ -5,7 +5,7 @@ import haxe.macro.Expr;
 import ai.htn.Parser;
 import haxe.macro.Context;
 
-using tink.MacroApi;
+
 using haxe.macro.MacroStringTools;
 using StringTools;
 using Lambda;

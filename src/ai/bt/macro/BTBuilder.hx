@@ -8,7 +8,7 @@ import ai.tools.AST;
 import ai.macro.MacroTools;
 import ai.common.TaskResult;
 
-using tink.MacroApi;
+
 using haxe.macro.MacroStringTools;
 using StringTools;
 using Lambda;
