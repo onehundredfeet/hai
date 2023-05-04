@@ -5,16 +5,17 @@ package ai.macro;
 
 import ai.tools.AST;
 import haxe.macro.Expr;
-using tink.MacroApi;
+using ai.macro.Extensions;
 import haxe.macro.Context;
+using haxe.macro.TypeTools;
 using StringTools;
 
  function exprConstString(s:String) : Expr{
-    return Exprs.at(EConst(CString(s)));
+    return EConst(CString(s)).at();
 }
 
 function exprConstInt(i:Int) : Expr{
-    return Exprs.at(EConst(CInt(Std.string(i))));
+    return EConst(CInt(Std.string(i))).at();
 }
 
  function exprID(s:String): Expr {
@@ -22,7 +23,7 @@ function exprConstInt(i:Int) : Expr{
 }
 
 function exprCall(method:String, ?params:Array<Expr>) : Expr {
-    return Exprs.call(Exprs.at(EConst(CIdent(method))), params);
+    return EConst(CIdent(method)).at().call( params);
 }
 
 function exprTrue():Expr {
@@ -34,7 +35,7 @@ function exprTrue():Expr {
 }
 
 function exprIf(c:Expr, e:Expr) {
-    return Exprs.at(EIf(c, e, null));
+    return EIf(c, e, null).at();
 }
 
 function exprEq(a:Expr, b:Expr) : Expr{
@@ -51,8 +52,8 @@ function exprFor(ivar:Expr, len:Expr, expr:Expr) : Expr{
 
 function getStringValue(e:Expr):String {
     var str = e.getString();
-    if (str.isSuccess())
-        return str.sure();
+    if (str != null)
+        return str;
     switch (e.expr) {
         case EConst(c):
             switch (c) {
@@ -118,13 +119,13 @@ function getTagFunctions( fields : Array<Field>, tags : Array<String> ) {
  function getExpressionType(et:ExpressionType) {
     switch (et) {
         case ETFloat:
-            return Context.getType("Float").toComplex();
+            return macro :Float;
         case ETBool:
-            return Context.getType("Bool").toComplex();
+            return macro :Bool;
         case ETInt:
-            return Context.getType("Int").toComplex();
+            return macro :Int;
         case ETUser(name):
-            return Context.getType(name).toComplex();
+            return Context.getType(name).toComplexType();
     }
     return null;
 }
