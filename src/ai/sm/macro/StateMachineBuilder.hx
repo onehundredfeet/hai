@@ -9,6 +9,8 @@ import ai.macro.MacroTools;
 import gdoc.NodeGraph;
 import gdoc.NodeDocReader;
 import gdoc.NodeGraphReader;
+import sys.FileSystem;
+import haxe.Exception;
 
 using ai.macro.Extensions;
 using StringTools;
@@ -85,6 +87,7 @@ class StateMachineBuilder {
 
 		for (ss in transitionNames) {
 			if (isEmpty(ss)) {
+				trace('Transition names ${transitionNames}');
 				Context.fatalError('Empty transition name', Context.currentPos());
 			}
 			fields.push(makeFinalInt("T_" + ss, count++, macro :ai.sm.Transition));
@@ -902,6 +905,14 @@ class StateMachineBuilder {
 
 	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool):Array<Field> {
 		// trace("Building state machine " + Context.getLocalClass().get().name);
+
+		if (FileSystem.exists(path) != true) {
+			var contextRelPath = Context.resolvePath(path);
+			if (FileSystem.exists(contextRelPath) != true) {
+				Context.fatalError('Can\'t find file ${path} or ${contextRelPath} for state machine file', Context.currentPos());
+			}
+			path = contextRelPath;
+		}
 
 		var model = getGraph(path, machine);
 
