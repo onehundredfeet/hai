@@ -83,7 +83,7 @@ class StateMachineBuilder {
 			//            trace("State name:" + ss);
 		}
 		count = 0;
-		var transitionNames = model.gatherTransitionNames();
+		var transitionNames = model.gatherOutgoingRelationNames();
 
 		for (ss in transitionNames) {
 			if (isEmpty(ss)) {
@@ -512,7 +512,7 @@ class StateMachineBuilder {
 	static function buildFireStrFunction( graph:NodeGraph) {
 		var cases = new Array<Case>();
 
-		var transitionNames = graph.gatherTransitionNames();
+		var transitionNames = graph.gatherOutgoingRelationNames();
 		for (t in transitionNames) {
 			var c:Case = {values: [exprConstString(t)], expr:ECall(EConst(CIdent("fire")).at(), [EConst(CIdent("T_" + t)).at()]).at()};
 			cases.push(c);
@@ -571,7 +571,7 @@ class StateMachineBuilder {
 		var fields = [];
 		var caseArray = new Array<Case>();
 		var transitionExpr = exprID("transition");
-		var transitionNames = model.gatherTransitionNames();
+		var transitionNames = model.gatherOutgoingRelationNames();
 		for (t in transitionNames) {
 			var transitionNameExpr = exprID("T_" + t);
 
@@ -905,13 +905,18 @@ class StateMachineBuilder {
 
 	macro static public function build(path:String, machine:String, makeInterface:Bool, constructor:Bool):Array<Field> {
 		// trace("Building state machine " + Context.getLocalClass().get().name);
-
+		
 		if (FileSystem.exists(path) != true) {
-			var contextRelPath = Context.resolvePath(path);
-			if (FileSystem.exists(contextRelPath) != true) {
-				Context.fatalError('Can\'t find file ${path} or ${contextRelPath} for state machine file', Context.currentPos());
+			try {
+				var contextRelPath = Context.resolvePath(path);
+				if (FileSystem.exists(contextRelPath) != true) {
+					Context.fatalError('Can\'t find file ${path} or ${contextRelPath} for state machine file - moddule ${Context.getLocalModule()}', Context.currentPos());
+				}
+				path = contextRelPath;
+			} catch(e) {
+				Context.fatalError('Can\'t find file ${path} for state machine file - moddule ${Context.getLocalModule()}', Context.currentPos());
 			}
-			path = contextRelPath;
+			
 		}
 
 		var model = getGraph(path, machine);
