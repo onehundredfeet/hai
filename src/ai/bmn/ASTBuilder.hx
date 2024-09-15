@@ -8,6 +8,8 @@ import ai.bmn.BMNAST;
 import haxe.ds.StringMap;
 import ai.bmn.ASTTools;
 
+typedef NodeGraphNode = gdoc.Node;
+
 using StringTools;
 using Lambda;
 

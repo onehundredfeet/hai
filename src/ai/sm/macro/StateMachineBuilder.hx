@@ -17,6 +17,8 @@ using StringTools;
 using Lambda;
 using haxe.macro.TypeTools;
 
+typedef NodeGraphNode = gdoc.Node;
+
 typedef StateAction = {
 	entries:Array<String>,
 	exits:Array<String>,
@@ -351,7 +353,7 @@ class StateMachineBuilder {
 			while (s != null) {
 				//trace('\tWalking node ${currentNode.name} : ${s.name}');
 				var parent = s.parent;
-				s.walkOutgoingNonChildren((trigger) -> {
+				s.walkOutgoingEdgesNonChildren((trigger) -> {
 					var targetState = trigger.target;
 					var sourceStateName = s.name;
 					var targetStateName = targetState.name;
@@ -724,12 +726,12 @@ class StateMachineBuilder {
 	}
 
 	static function initialChild(node:NodeGraphNode) {
-		return node.getChildren().find((x) -> x.properties.exists('initial'));
+		return node.getChildrenNodes().find((x) -> x.properties.exists('initial'));
 	}
 
 	static function getInitialLeaf(node:NodeGraphNode) {
 		if (node.hasChildren()) {
-			var x = node.getChildren().find((x) -> x.properties.exists('initial'));
+			var x = node.getChildrenNodes().find((x) -> x.properties.exists('initial'));
 			if (x != null)
 				return getInitialLeaf(x);
 			throw('No initial state for node ${node.name}');
@@ -742,7 +744,7 @@ class StateMachineBuilder {
 	}
 
 	static function getDefaultState(graph:NodeGraph) {
-		var defaultState = graph.nodes.find((x) -> x.properties.exists("default") || x.properties.exists("root") && x.parent == null);
+		var defaultState = graph.nodes.find((x) -> x.properties.exists("default") || x.properties.exists("root") && x.getParent() == null);
 		if (defaultState == null)
 			Context.fatalError('No default state in graph', Context.currentPos());
 		var defaultName = defaultState.name;
@@ -872,7 +874,7 @@ class StateMachineBuilder {
 						blockList.push(fc);
 					}
 				}
-				cur = cur.parent;
+				cur = cur.getParent();
 			}
 
 			if (blockList.length > 0) {
