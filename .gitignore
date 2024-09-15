@@ -5,3 +5,4 @@
 dump
 .DS_Store
 out.json
+.haxelib
