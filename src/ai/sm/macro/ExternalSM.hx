@@ -239,6 +239,15 @@ class ExternalSM {
 		});
 
 		fields.push({
+			name: "lastState",
+			doc: null,
+			meta: [],
+			access: [APublic],
+			kind: FVar(enumCT, EConst(CIdent(getNameEnumStateName(ds.name))).at()),
+			pos: Context.currentPos()
+		});
+
+		fields.push({
 			name: "lastTransition",
 			doc: null,
 			meta: [],
@@ -597,6 +606,8 @@ class ExternalSM {
 						}
 						blockArray.push(exprCall("onEnterBy" + targetAncestor.name, [exprID("self"), exprID(trigger.name)]));
 					}
+					
+					blockArray.push(makeMemberAccessExpr("self", "lastState").assign( makeMemberAccessExpr("self", "state")));
 					blockArray.push(makeMemberAccessExpr("self", "state").assign( exprID(getNameEnumStateName(leafStateName))));
 
 					for (exit in exited) {
@@ -742,27 +753,51 @@ class ExternalSM {
 	}
 
 	// Tries to guess at correct overload
-	static function exprCallField(f:Field, a:Expr, b:Expr = null, allowSingle:Bool = true):Expr {
+	static function exprCallField(f:Field, stateExpr:Expr, transExpr:Expr = null, allowSingle:Bool = true):Expr {
+		var stateEnumName = getStateEnumName();
+		var stateEnumCT = stateEnumName.asComplexType();
+
+		var transitionEnumName = getTransitionEnumName();
+		var transitionEnumCT = transitionEnumName.asComplexType();
+
+		var stateClassStr = externalStateClassName();
+		var stateClassCT = stateClassStr.asComplexType();
+		
 		switch (f.kind) {
 			case FFun(fun):
-				if (fun.args.length == 0) {
-					return EConst(CIdent(f.name)).at().call( []);
-				}
-				if (fun.args.length == 1) {
-					if (allowSingle) {
-						var ct:ComplexType = fun.args[0].type;
-						if (ComplexTypeTools.toString(fun.args[0].type) == "ai.sm.State") {
-							return EConst(CIdent(f.name)).at().call( [a]);
-						} else if (ComplexTypeTools.toString(fun.args[0].type) == "ai.sm.Transition") {
-							return EConst(CIdent(f.name)).at().call( [b]);
-						}
-					}
 
-					throw 'Unsupported parameter pattern on ${f.name}';
+			var mappedArgs = fun.args.map((x) -> {
+				var ct = x.type;
+				if (ComplexTypeTools.toString(ct) == stateEnumName) {
+					return stateExpr;
+				} else if (ComplexTypeTools.toString(ct) == transitionEnumName) {
+					return transExpr;
+				} else if (ComplexTypeTools.toString(ct) == stateClassStr) {
+					return exprID( "self");
+				} else {
+					return null;
 				}
-				if (fun.args.length == 2 && b != null) {
-					return EConst(CIdent(f.name)).at().call( [a, b]);
-				}
+			});
+
+			return EConst(CIdent(f.name)).at().call( mappedArgs);
+				// if (fun.args.length == 0) {
+				// 	return EConst(CIdent(f.name)).at().call( []);
+				// }
+				// if (fun.args.length == 1) {
+				// 	if (allowSingle) {
+				// 		var ct:ComplexType = fun.args[0].type;
+				// 		if (ComplexTypeTools.toString(fun.args[0].type) == "ai.sm.State") {
+				// 			return EConst(CIdent(f.name)).at().call( [exprID( "self"), a]);
+				// 		} else if (ComplexTypeTools.toString(fun.args[0].type) == "ai.sm.Transition") {
+				// 			return EConst(CIdent(f.name)).at().call( [exprID( "self"), b]);
+				// 		}
+				// 	}
+
+				// 	throw 'Unsupported parameter pattern on ${f.name}';
+				// }
+				// if (fun.args.length == 2 && b != null) {
+				// 	return EConst(CIdent(f.name)).at().call( [exprID( "self"), a, b]);
+				// }
 
 				throw 'Unsupported parameter pattern on ${f.name}';
 			default:
@@ -787,7 +822,7 @@ class ExternalSM {
 		var transitionExpr = exprID("transition");
 		var transitionNames = model.gatherOutgoingRelationNames();
 		for (t in transitionNames) {
-			var transitionNameExpr = exprID("T_" + t);
+			var transitionNameExpr = exprID( t);
 
 			var handlerArray = new Array<Expr>();
 			if (actions.traverse.exists(t)) {

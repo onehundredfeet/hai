@@ -40,11 +40,36 @@ class ExternalStateMachine {
     //     return new ExternalState(0);
     // }
 
+    var a : Int = 0;
+    var b : Int = 0;
+    var c : Int = 0;
+
     @:while(HOLDING)
     @:after(0.1)
     function doTime( self:ExternalStateMachineState) {
     }
 
+    @:enter(DISCONNECT_REQUESTED)
+    @:enter(DISCONNECTING)
+    function onBootState( self:ExternalStateMachineState, s : EExternalStateMachineState) {
+        a = 1;
+        b = 2;
+    }
+
+    @:enterby(DISCONNECTING) 
+    function onDisconnectedAll(self:ExternalStateMachineState,s : EExternalStateMachineState, t : EExternalStateMachineTransition) {
+        trace('onDisconnectedAll - I\'m disconnected ${s}');
+    }
+
+    @:enterby(DISCONNECTING) 
+    function onDisconnectedAllTrigger( self:ExternalStateMachineState, t : EExternalStateMachineTransition) {
+        trace("onDisconnectedAllTrigger - I'm disconnected");
+    }
+
+    @:enterby(DISCONNECTING) 
+    function onDisconnectedAllState( self:ExternalStateMachineState, s : EExternalStateMachineState) {
+        trace("onDisconnectedAllState - I'm disconnected");
+    }
 }
 
 /*
@@ -59,12 +84,7 @@ class StateBuildTest {
     var b : Int = 0;
     var c : Int = 0;
 
-    @:enter(JOINING)
-    @:enter(DISCONNECTING)
-    function onBootState( s : ai.sm.State) {
-        a = 1;
-        b = 2;
-    }
+   
 
     @:enter(JOINING)
     @:enter(DISCONNECTING)
