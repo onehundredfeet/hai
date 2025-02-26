@@ -33,7 +33,7 @@ package;
 // }
 
 @:build(ai.sm.macro.ExternalSM.buildMachine("test/examples.vdx", "sm"))
-@:sm_print
+//@:sm_print
 @:sm_tick
 class ExternalStateMachine {
     // public function make() {
@@ -69,6 +69,23 @@ class ExternalStateMachine {
     @:enterby(DISCONNECTING) 
     function onDisconnectedAllState( self:ExternalStateMachineState, s : EExternalStateMachineState) {
         trace("onDisconnectedAllState - I'm disconnected");
+    }
+
+    @:enterby(DISCONNECT_REQUESTED, DISCONNECT) 
+    function onDisconnectedByREMOVE( self:ExternalStateMachineState, t : EExternalStateMachineTransition) {
+        trace("onDisconnectedByREMOVE  - I'm disconnected");
+    }
+
+    @:enterfrom(DISCONNECTING, DISCONNECT_REQUESTED) 
+    function onDisconnectedFromReconnectNone() {
+        trace("onDisconnectedFromReconnectNone - I'm disconnected");
+    }
+
+    @:exit(DISCONNECTING)
+    function onLeave(self:ExternalStateMachineState,s : EExternalStateMachineState) {
+        trace('Leaving');
+        a = 1;
+        b = 2;
     }
 }
 

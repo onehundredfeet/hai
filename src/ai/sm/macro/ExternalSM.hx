@@ -174,7 +174,7 @@ class ExternalSM {
 			fields: fields
 		};
 
-		trace(_printer.printTypeDefinition(def));
+//		trace(_printer.printTypeDefinition(def));
 
 		Context.defineType(def);
 	}
@@ -208,7 +208,7 @@ class ExternalSM {
 			fields: fields
 		};
 
-		trace(_printer.printTypeDefinition(def));
+//		trace(_printer.printTypeDefinition(def));
 
 		Context.defineType(def);
 	}
@@ -314,7 +314,7 @@ class ExternalSM {
 			fields: fields
 		};
 
-		trace(_printer.printTypeDefinition(def));
+//		trace(_printer.printTypeDefinition(def));
 
 		Context.defineType(def);
 		//return fields;
@@ -850,7 +850,7 @@ class ExternalSM {
 			if (actions.entryBy.exists(s))
 				for (a in actions.entryBy[s])
 					handlerArray.push(isEmpty(a.transition) ? exprCallField(a.field, stateNameExpr,
-						triggerExpr) : exprIf(exprEq(triggerExpr, exprID("T_" + a.transition)), exprCallField(a.field, stateNameExpr, exprID("trigger"))));
+						triggerExpr) : exprIf(exprEq(triggerExpr, exprID(a.transition)), exprCallField(a.field, stateNameExpr, exprID("trigger"))));
 
 			// if (allowListeners) {
 			// 	var index = macro _listeners[i];
