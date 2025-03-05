@@ -6,9 +6,9 @@ import haxe.macro.Printer;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import ai.macro.MacroTools;
-import gdoc.NodeGraph;
-import gdoc.NodeDocReader;
-import gdoc.NodeGraphReader;
+import grph.NodeGraph;
+import grph.NodeDocReader;
+import grph.NodeGraphReader;
 import sys.FileSystem;
 import haxe.Exception;
 
@@ -16,31 +16,7 @@ using ai.macro.Extensions;
 using StringTools;
 using Lambda;
 using haxe.macro.TypeTools;
-
-typedef NodeGraphNode = gdoc.Node;
-
-typedef StateAction = {
-	entries:Array<String>,
-	exits:Array<String>,
-	entrybys:Array<String>,
-	entryfroms:Array<String>
-}
-
-typedef FieldTransition = {
-	field:Field,
-	transition:String
-}
-
-typedef ActionMaps = {
-	entry:Map<String, Array<Field>>,
-	traverse:Map<String, Array<Field>>,
-	entryBy:Map<String, Array<FieldTransition>>,
-	entryFrom:Map<String, Array<FieldTransition>>,
-	exit:Map<String, Array<Field>>,
-	globalEntry:Array<Field>,
-	globalExit:Array<Field>,
-	whiles:Map<String, Array<Field>>
-}
+import ai.sm.macro.StateMachineTools;
 
 class StateMachineBuilder {
 	static function makeFinalInt(n:String, v:Int, ?t:ComplexType) {

@@ -6,40 +6,73 @@ import haxe.macro.Printer;
 import haxe.macro.Context;
 import haxe.macro.Expr;
 import ai.macro.MacroTools;
-import grph.NodeGraph;
 import grph.NodeDocReader;
 import grph.NodeGraphReader;
+import grph.NodeGraph;
 import sys.FileSystem;
 import haxe.Exception;
+import ai.sm.macro.StateMachineTools;
 
 using ai.macro.Extensions;
 using StringTools;
 using Lambda;
 using haxe.macro.TypeTools;
 
-typedef NodeGraphNode = grph.Node;
 
-typedef StateAction = {
-	entries:Array<String>,
-	exits:Array<String>,
-	entrybys:Array<String>,
-	entryfroms:Array<String>
-}
+class ExternalSMContext {
+	public function new(model : NodeGraph, stateClassStr : String) {
+		this.model = model;
+		this.stateClassStr = stateClassStr;
 
-typedef FieldTransition = {
-	field:Field,
-	transition:String
-}
+		stateClassCT = stateClassStr.asComplexType();
 
-typedef ActionMaps = {
-	entry:Map<String, Array<Field>>,
-	traverse:Map<String, Array<Field>>,
-	entryBy:Map<String, Array<FieldTransition>>,
-	entryFrom:Map<String, Array<FieldTransition>>,
-	exit:Map<String, Array<Field>>,
-	globalEntry:Array<Field>,
-	globalExit:Array<Field>,
-	whiles:Map<String, Array<Field>>
+		var splitStr = stateClassStr.split(".");
+		var className = splitStr.pop();
+		var packageName = splitStr.join(".");
+		if (packageName.length > 0) {
+			packageName = packageName + ".";
+		}
+		stateEnumName = packageName + "E" + className + "State";
+		stateEnumCT = stateEnumName.asComplexType();
+
+		transitionEnumName = packageName + "E" + className + "Transition";
+		transitionEnumCT = transitionEnumName.asComplexType();
+	}
+
+	public function getCleanEnumName(name:String) {
+		return name.toUpperCase();
+	}
+
+	public function getFullStateName( name:String) {
+		return stateEnumName + "." + name.toUpperCase();
+	}
+	public function getFullTransitionName( name:String) {
+		return transitionEnumName + "." + name.toUpperCase();
+	}
+
+	public function getFullStateNameExpr( name:String) {
+		var enumPack = stateEnumName.split(".");
+		enumPack.push(name.toUpperCase());
+		var e= macro $p{enumPack};
+		return e;
+	}
+	public function getFullTransitionNameExpr( name:String) {
+		var enumPack = transitionEnumName.split(".");
+		enumPack.push(name.toUpperCase());
+		var e= macro $p{enumPack};
+		return e;
+	}
+	
+	public final stateClassStr : String;
+	public final stateClassCT : ComplexType;
+
+	public final stateEnumName :String;
+	public final stateEnumCT : ComplexType;
+
+	public final transitionEnumName : String;
+	public final transitionEnumCT : ComplexType;
+
+	public var model : NodeGraph;
 }
 
 class ExternalSM {
@@ -103,11 +136,11 @@ class ExternalSM {
 		return timerNames;
 
 	}
-	static function buildConstantFields( model:NodeGraph) : Array<Field> {
+	static function buildConstantFields( emContext : ExternalSMContext, model:NodeGraph) : Array<Field> {
 		var count = 0;
 		var fields = [];
 		for (ss in model.nodes) {
-			fields.push(makeFinalInt(getNameEnumStateName(ss.name), count++, macro :ai.sm.State));
+			fields.push(makeFinalInt(emContext.getCleanEnumName(ss.name), count++, macro :ai.sm.State));
 			//            trace("State name:" + ss);
 		}
 		count = 0;
@@ -154,21 +187,18 @@ class ExternalSM {
 
 	static var _printer = new haxe.macro.Printer();
 
-	static function getStateEnumName() {
-		return "E" + Context.getLocalClass().get().name + "State";
-	}
 
-	static function buildStateEnum( model:NodeGraph) {
+	static function defineStateEnum( emContext : ExternalSMContext ,model:NodeGraph) {
 		var fields = [];
 
 		var count = 0;
 		for (ss in model.nodes) {
-			fields.push(makeVarInt(getNameEnumStateName(ss.name), count++));
+			fields.push(makeVarInt(emContext.getCleanEnumName(ss.name), count++));
 		}
 
 		var def = {
 			pack: Context.getLocalClass().get().pack,
-			name: getStateEnumName(),
+			name: emContext.stateEnumName,
 			pos: Context.currentPos(),
 			kind: TDAbstract(macro :Int, [AbEnum]),
 			fields: fields
@@ -179,11 +209,11 @@ class ExternalSM {
 		Context.defineType(def);
 	}
 
-	static function getTransitionEnumName() {
-		return "E" + Context.getLocalClass().get().name + "Transition";
-	}
+	// static function getTransitionEnumName() {
+	// 	return "E" + Context.getLocalClass().get().name + "Transition";
+	// }
 
-	static function buildTransitionEnum( model:NodeGraph) {
+	static function defineTransitionEnum( emContext : ExternalSMContext,model:NodeGraph) {
 		var fields = [];
 
 		var transitionNames = model.gatherOutgoingRelationNames();
@@ -195,14 +225,14 @@ class ExternalSM {
 				trace('Transition names ${transitionNames}');
 				Context.fatalError('Empty transition name', Context.currentPos());
 			}
-			fields.push(makeVarInt(getNameEnumTransitionName(ss), count++));
+			fields.push(makeVarInt(emContext.getCleanEnumName( ss), count++));
 			//            trace("State name:" + ss);
 		}
 
 
 		var def = {
 			pack: Context.getLocalClass().get().pack,
-			name: getTransitionEnumName(),
+			name: emContext.transitionEnumName,
 			pos: Context.currentPos(),
 			kind: TDAbstract(macro :Int, [AbEnum]),
 			fields: fields
@@ -214,18 +244,12 @@ class ExternalSM {
 	}
 
 
-	static function externalStateClassName() {
-		return Context.getLocalClass().get().name + "State";
-	}
-	static function buildExternalStateClass( model:NodeGraph) {
+	// static function externalStateClassName() {
+	// 	return Context.getLocalClass().get().name + "State";
+	// }
+	static function buildExternalStateClass( emContext : ExternalSMContext ,model:NodeGraph ) {
 		var fields = [];
 		var ds = getDefaultState(model);
-
-		var enumName = getStateEnumName();
-		var enumCT = enumName.asComplexType();
-
-		var transitionEnumName = getTransitionEnumName();
-		var transitionEnumCT = transitionEnumName.asComplexType();
 		
 		fields.push(buildConstructor(model));
 
@@ -234,7 +258,7 @@ class ExternalSM {
 			doc: null,
 			meta: [],
 			access: [APublic],
-			kind: FVar(enumCT, EConst(CIdent(getNameEnumStateName(ds.name))).at()),
+			kind: FVar(emContext.stateEnumCT, emContext.getFullStateNameExpr(ds.name)),
 			pos: Context.currentPos()
 		});
 
@@ -243,7 +267,7 @@ class ExternalSM {
 			doc: null,
 			meta: [],
 			access: [APublic],
-			kind: FVar(enumCT, EConst(CIdent(getNameEnumStateName(ds.name))).at()),
+			kind: FVar(emContext.stateEnumCT, emContext.getFullStateNameExpr(ds.name)),
 			pos: Context.currentPos()
 		});
 
@@ -252,7 +276,7 @@ class ExternalSM {
 			doc: null,
 			meta: [],
 			access: [APublic],
-			kind: FVar(transitionEnumCT, null),
+			kind: FVar(emContext.transitionEnumCT, null),
 			pos: Context.currentPos()
 		});
 		
@@ -265,6 +289,7 @@ class ExternalSM {
 			pos: Context.currentPos()
 		});
 
+		var transitionEnumCT = emContext.transitionEnumCT;
 		fields.push({
 			name: "triggerQueue",
 			doc: null,
@@ -303,12 +328,18 @@ class ExternalSM {
 		// 	});
 		// }
 
-		fields.push(buildIsInFunction( model));
-		fields.push(buildQueueFunction( model));
+		fields.push(buildIsInFunction( emContext, model));
+		fields.push(buildQueueFunction( emContext, model));
 
+		return fields;
+	}
+	
+
+	static function defineExternalStateClass( emContext : ExternalSMContext , name : String, model:NodeGraph) {
+		var fields = buildExternalStateClass(emContext, model);
 		var def = {
 			pack: Context.getLocalClass().get().pack,
-			name: externalStateClassName(),
+			name: name,
 			pos: Context.currentPos(),
 			kind: TDClass(),
 			fields: fields
@@ -316,17 +347,15 @@ class ExternalSM {
 
 //		trace(_printer.printTypeDefinition(def));
 
-		Context.defineType(def);
-		//return fields;
-	}
-	
 
+		Context.defineType(def);
+	}
 	
 	static function buildMachineClass( model:NodeGraph, actions:ActionMaps, ticking:Bool, timers : Array<String>) {
 
 	}
 
-	static function buildVars( model:NodeGraph, actions:ActionMaps, allowListeners:Bool, signals:Bool, ticking:Bool, timers : Array<String>) : Array<Field> {
+	static function buildVars( emContext : ExternalSMContext, model:NodeGraph, actions:ActionMaps, allowListeners:Bool, signals:Bool, ticking:Bool, timers : Array<String>) : Array<Field> {
 		var fields = [];
 
 		var count = 0;
@@ -337,7 +366,7 @@ class ExternalSM {
 				doc: null,
 				meta: [],
 				access: [APrivate],
-				kind: FVar(macro :Int, EConst(CIdent(getNameEnumStateName(ds.name))).at()),
+				kind: FVar(macro :Int, emContext.getFullStateNameExpr(ds.name)),
 				pos: Context.currentPos()
 			};
 
@@ -409,12 +438,12 @@ class ExternalSM {
 		return fields;
 	}
 
-	static function cleanState(s:String):String {
-		if (s.startsWith("S_")) {
-			return s.substr(2).toUpperCase();
-		}
-		return s.toUpperCase();
-	}
+	// static function cleanState(s:String):String {
+	// 	if (s.startsWith("S_")) {
+	// 		return s.substr(2).toUpperCase();
+	// 	}
+	// 	return s.toUpperCase();
+	// }
 
 	static function cleanIdentifier(s:String):String {
 		if (s.startsWith("S_")) {
@@ -426,7 +455,7 @@ class ExternalSM {
 		return s.toUpperCase();
 	}
 
-	static function addActions(map:Map<String, Array<Field>>, meta:Array<Array<Expr>>, f:Field) {
+	static function addActions(emContext : ExternalSMContext, map:Map<String, Array<Field>>, meta:Array<Array<Expr>>, f:Field) {
 		if (meta == null)
 			return;
 		for (se in meta) {
@@ -434,7 +463,7 @@ class ExternalSM {
 				var state = p.getIdent();
 
 				if (state != null) {
-					var stateName = cleanIdentifier(state);
+					var stateName = emContext.getCleanEnumName(state);
 					if (!map.exists(stateName))
 						map[stateName] = new Array<Field>();
 					map[stateName].push(f);
@@ -443,7 +472,7 @@ class ExternalSM {
 		}
 	}
 
-	static function addGlobals(array:Array<Field>, meta:Array<Array<Expr>>, f:Field) {
+	static function addGlobals(emContext : ExternalSMContext, array:Array<Field>, meta:Array<Array<Expr>>, f:Field) {
 		if (meta == null)
 			return;
 		for (se in meta) {
@@ -452,14 +481,14 @@ class ExternalSM {
 		}
 	}
 
-	static function addConditionalActions(map:Map<String, Array<FieldTransition>>, meta:Array<Array<Expr>>, f:Field) {
+	static function addConditionalActions(emContext : ExternalSMContext, map:Map<String, Array<FieldTransition>>, meta:Array<Array<Expr>>, f:Field) {
 		if (meta == null)
 			return;
 		for (se in meta) {
 			if (se.length >= 1) {
 				var state = se[0].getIdent();
 				if (state != null) {
-					var stateName = cleanState(state);
+					var stateName = emContext.getCleanEnumName(state);
 
 					if (!map.exists(stateName))
 						map[stateName] = new Array<FieldTransition>();
@@ -474,7 +503,7 @@ class ExternalSM {
 		}
 	}
 
-	static function getActions():ActionMaps {
+	static function getActions(emContext:ExternalSMContext):ActionMaps {
 		var entryMap = new Map<String, Array<Field>>();
 		var traverseMap = new Map<String, Array<Field>>();
 		var entryByMap = new Map<String, Array<FieldTransition>>();
@@ -498,14 +527,14 @@ class ExternalSM {
 				case FFun(fun):
 					//					var enter = mmap.get(":enter");
 
-					addActions(traverseMap, mmap.get(":traverse"), field);
-					addActions(entryMap, mmap.get(":enter"), field);
-					addActions(exitMap, mmap.get(":exit"), field);
-					addActions(whileMap, mmap.get(":while"), field);
-					addGlobals(entryGlobals, mmap.get(":enter"), field);
-					addGlobals(exitGlobals, mmap.get(":exit"), field);
-					addConditionalActions(entryByMap, mmap.get(":enterby"), field);
-					addConditionalActions(entryFromMap, mmap.get(":enterfrom"), field);
+					addActions(emContext, traverseMap, mmap.get(":traverse"), field);
+					addActions(emContext, entryMap, mmap.get(":enter"), field);
+					addActions(emContext, exitMap, mmap.get(":exit"), field);
+					addActions(emContext, whileMap, mmap.get(":while"), field);
+					addGlobals(emContext, entryGlobals, mmap.get(":enter"), field);
+					addGlobals(emContext, exitGlobals, mmap.get(":exit"), field);
+					addConditionalActions(emContext, entryByMap, mmap.get(":enterby"), field);
+					addConditionalActions(emContext, entryFromMap, mmap.get(":enterfrom"), field);
 				default:
 					continue;
 			}
@@ -531,17 +560,13 @@ class ExternalSM {
 		return true;
 	}
 
-	static function buildProcessFunction( stateClassCT : ComplexType, graph:NodeGraph) {
+	static function buildProcessFunction( emContext : ExternalSMContext, graph:NodeGraph) {
 		var stateCases = new Array<Case>();
 
-		var stateEnumName = getStateEnumName();
-		var stateEnumCT = stateEnumName.asComplexType();
-
-		var transitionEnumName = getTransitionEnumName();
-		var transitionEnumCT = transitionEnumName.asComplexType();
-
-
-		for (currentNode in graph.nodes) {
+		var max = graph.nodes.length;
+		max = 1;
+		for (i in 0...max) {
+			var currentNode = graph.nodes[i];
 			if (!isValidLeafNode(currentNode))
 				continue;
 			var triggers = new Map<String, Bool>();
@@ -602,20 +627,20 @@ class ExternalSM {
 
 					for (targetAncestor in walkList) {
 						for (exit in exited) {
-							blockArray.push(exprCall("onEnterFrom" + targetAncestor.name, [exprID("self"), exprID(getNameEnumStateName(exit))]));
+							blockArray.push(exprCall("onEnterFrom" + targetAncestor.name, [exprID("self"), exprID(emContext.getCleanEnumName(exit))]));
 						}
-						blockArray.push(exprCall("onEnterBy" + targetAncestor.name, [exprID("self"), exprID(trigger.name)]));
+						blockArray.push(exprCall("onEnterBy" + targetAncestor.name, [exprID("self"), emContext.getFullTransitionNameExpr(trigger.name)]));
 					}
 					
 					blockArray.push(makeMemberAccessExpr("self", "lastState").assign( makeMemberAccessExpr("self", "state")));
-					blockArray.push(makeMemberAccessExpr("self", "state").assign( exprID(getNameEnumStateName(leafStateName))));
+					blockArray.push(makeMemberAccessExpr("self", "state").assign( emContext.getFullStateNameExpr(leafStateName)));
 
 					for (exit in exited) {
-						blockArray.push(exprCall("onEnterFrom" + leafStateName, [exprID("self"), exprID(getNameEnumStateName(exit))]));
+						blockArray.push(exprCall("onEnterFrom" + leafStateName, [exprID("self"), emContext.getFullStateNameExpr(exit)]));
 					}
 
-					blockArray.push(exprCall("onEnterBy" + leafStateName, [exprID("self"), exprID(trigger.name)]));
-					var tc:Case = {values: [makeMemberAccessExpr(transitionEnumName, trigger.name)], expr: blockArray.toBlock()};
+					blockArray.push(exprCall("onEnterBy" + leafStateName, [exprID("self"), emContext.getFullTransitionNameExpr(trigger.name)]));
+					var tc:Case = {values: [makeMemberAccessExpr(emContext.transitionEnumName, trigger.name)], expr: blockArray.toBlock()};
 					triggerCases.push(tc);
 				});
 				s = parent;
@@ -623,7 +648,8 @@ class ExternalSM {
 
 			var triggerSwitch = ESwitch(EConst(CIdent("trigger")).at(), triggerCases, EBlock([]).at()).at();
 
-			var stateCasec:Case = {values: [makeMemberAccessExpr(stateEnumName, getNameEnumStateName(currentNode.name))], expr: triggerSwitch};
+			triggerSwitch = null;
+			var stateCasec:Case = {values: [emContext.getFullStateNameExpr(currentNode.name)], expr: triggerSwitch};
 			stateCases.push(stateCasec);
 		}
 
@@ -651,7 +677,7 @@ class ExternalSM {
 
 //		funBlock.push(macro self.inTransition = false);
 
-		var argClass: FunctionArg = {name: "self", type: stateClassCT};
+		var argClass: FunctionArg = {name: "self", type: emContext.stateClassCT};
 //		var arg:FunctionArg = {name: "trigger", type: macro :Int};
 		var fun:Function = {args: [argClass], expr: EBlock(funBlock).at()};
 
@@ -667,7 +693,7 @@ class ExternalSM {
 		return fireFunc;
 	}
 
-	static function buildIsInFunction( model:NodeGraph) {
+	static function buildIsInFunction( emContext : ExternalSMContext, model:NodeGraph) {
 		var blockArray = new Array<Expr>();
 
 		blockArray.push(exprIf(exprEq(exprID("state"), exprID("inState")), macro return true));
@@ -682,7 +708,7 @@ class ExternalSM {
 			var parent = s.parent;
 
 			while (parent != null) {
-				var c:Case = {values: [exprID( getNameEnumStateName(parent.name))], expr: macro return true};
+				var c:Case = {values: [exprID( emContext.getCleanEnumName(parent.name))], expr: macro return true};
 				subcases.push(c);
 
 				parent = parent.parent;
@@ -690,7 +716,7 @@ class ExternalSM {
 
 			var caseExpr = subcases.length > 0 ? ESwitch(exprID("state"), subcases, EBlock([]).at()).at() : macro return false;
 
-			var theCase:Case = {values: [EConst(CIdent(getNameEnumStateName(s.name))).at()], expr: caseExpr};
+			var theCase:Case = {values: [EConst(CIdent(emContext.getCleanEnumName(s.name))).at()], expr: caseExpr};
 			cases.push(theCase);
 		}
 
@@ -700,28 +726,23 @@ class ExternalSM {
 		blockArray.push(sw);
 		blockArray.push(macro return false);
 
-		var enumName = getStateEnumName();
-		var enumCT = enumName.asComplexType();
-
 		return {
 			name: "isIn",
 			doc: null,
 			meta: [],
 			access: [APublic],
-			kind: FFun({args: [{name: "inState", type: enumCT}], expr: EBlock(blockArray).at()}),
+			kind: FFun({args: [{name: "inState", type: emContext.stateEnumCT}], expr: EBlock(blockArray).at()}),
 			pos: Context.currentPos()
 		};
 	}
 
-	static function buildQueueFunction( model:NodeGraph) {
-		var enumName = getTransitionEnumName();
-		var enumCT = enumName.asComplexType();
+	static function buildQueueFunction( emContext : ExternalSMContext, model:NodeGraph) {
 		return {
 			name: "queue",
 			doc: null,
 			meta: [],
 			access: [APublic, AInline],
-			kind: FFun({args: [{name: "transition", type: enumCT}], expr: macro triggerQueue.push(transition)}),
+			kind: FFun({args: [{name: "transitionID", type: emContext.transitionEnumCT}], expr: macro triggerQueue.push(transitionID)}),
 			pos: Context.currentPos()
 		};
 	}
@@ -753,26 +774,18 @@ class ExternalSM {
 	}
 
 	// Tries to guess at correct overload
-	static function exprCallField(f:Field, stateExpr:Expr, transExpr:Expr = null, allowSingle:Bool = true):Expr {
-		var stateEnumName = getStateEnumName();
-		var stateEnumCT = stateEnumName.asComplexType();
+	static function exprCallField(emContext : ExternalSMContext, f:Field, stateExpr:Expr, transExpr:Expr = null, allowSingle:Bool = true):Expr {
 
-		var transitionEnumName = getTransitionEnumName();
-		var transitionEnumCT = transitionEnumName.asComplexType();
-
-		var stateClassStr = externalStateClassName();
-		var stateClassCT = stateClassStr.asComplexType();
-		
 		switch (f.kind) {
 			case FFun(fun):
 
 			var mappedArgs = fun.args.map((x) -> {
 				var ct = x.type;
-				if (ComplexTypeTools.toString(ct) == stateEnumName) {
+				if (ComplexTypeTools.toString(ct) == emContext.stateEnumName) {
 					return stateExpr;
-				} else if (ComplexTypeTools.toString(ct) == transitionEnumName) {
+				} else if (ComplexTypeTools.toString(ct) == emContext.transitionEnumName) {
 					return transExpr;
-				} else if (ComplexTypeTools.toString(ct) == stateClassStr) {
+				} else if (ComplexTypeTools.toString(ct) == emContext.stateClassStr) {
 					return exprID( "self");
 				} else {
 					return null;
@@ -807,19 +820,10 @@ class ExternalSM {
 		return null;
 	}
 
-	static public function buildEventFunctions( actions:ActionMaps, model:NodeGraph,ticking:Bool) {
-		var stateEnumName = getStateEnumName();
-		var stateEnumCT = stateEnumName.asComplexType();
-
-		var transitionEnumName = getTransitionEnumName();
-		var transitionEnumCT = transitionEnumName.asComplexType();
-
-		var stateClassStr = externalStateClassName();
-		var stateClassCT = stateClassStr.asComplexType();
-
+	static public function buildEventFunctions( emContext : ExternalSMContext, actions:ActionMaps, model:NodeGraph,ticking:Bool) {
 		var fields = [];
 		var caseArray = new Array<Case>();
-		var transitionExpr = exprID("transition");
+		var transitionExpr = exprID("transitionID");
 		var transitionNames = model.gatherOutgoingRelationNames();
 		for (t in transitionNames) {
 			var transitionNameExpr = exprID( t);
@@ -827,7 +831,7 @@ class ExternalSM {
 			var handlerArray = new Array<Expr>();
 			if (actions.traverse.exists(t)) {
 				for (a in actions.traverse[t])
-					handlerArray.push(exprCallField(a, transitionNameExpr, transitionExpr));
+					handlerArray.push(exprCallField(emContext, a, transitionNameExpr, transitionExpr));
 				caseArray.push({values: [transitionNameExpr], expr: EBlock(handlerArray).at()});
 			}
 		}
@@ -835,22 +839,22 @@ class ExternalSM {
 		fields.push(makeMemberFunction("onTraverse",
 		EBlock([
 			macro self.lastTransitionTime = nowTime,
-			macro self.lastTransition = transition,
-			ESwitch(transitionExpr, caseArray, null).at()]).at().func( ["self".toArg(stateClassCT), "transition".toArg(transitionEnumCT)], null, null, false), [AInline, AFinal]));
+			macro self.lastTransition = transitionID,
+			ESwitch(transitionExpr, caseArray, null).at()]).at().func( ["self".toArg(emContext.stateClassCT), "transitionID".toArg(emContext.transitionEnumCT)], null, null, false), [AInline, AFinal]));
 
 		for (n in model.nodes) {
 			var s = n.name;
-			var stateNameExpr = exprID(getNameEnumStateName(s));
+			var stateNameExpr = exprID(emContext.getCleanEnumName(s));
 			var triggerExpr = exprID("trigger");
 			var stateExpr = exprID("state");
 			var handlerArray = new Array<Expr>();
 			if (actions.entry.exists(s))
 				for (a in actions.entry[s])
-					handlerArray.push(exprCallField(a, stateNameExpr, triggerExpr));
+					handlerArray.push(exprCallField(emContext, a, stateNameExpr, triggerExpr));
 			if (actions.entryBy.exists(s))
 				for (a in actions.entryBy[s])
-					handlerArray.push(isEmpty(a.transition) ? exprCallField(a.field, stateNameExpr,
-						triggerExpr) : exprIf(exprEq(triggerExpr, exprID(a.transition)), exprCallField(a.field, stateNameExpr, exprID("trigger"))));
+					handlerArray.push(isEmpty(a.transition) ? exprCallField(emContext, a.field, stateNameExpr,
+						triggerExpr) : exprIf(exprEq(triggerExpr, exprID(a.transition)), exprCallField(emContext, a.field, stateNameExpr, exprID("trigger"))));
 
 			// if (allowListeners) {
 			// 	var index = macro _listeners[i];
@@ -859,7 +863,7 @@ class ExternalSM {
 			// }
 
 			for (ge in actions.globalEntry) {
-				handlerArray.push(exprCallField(ge, stateNameExpr, triggerExpr));
+				handlerArray.push(exprCallField(emContext, ge, stateNameExpr, triggerExpr));
 			}
 
 			// if (signals) {
@@ -882,13 +886,13 @@ class ExternalSM {
 				}
 			}
 
-			fields.push(makeMemberFunction("onEnterBy" + s, handlerArray.toBlock().func( ["self".toArg(stateClassCT), "trigger".toArg(transitionEnumCT)]),
+			fields.push(makeMemberFunction("onEnterBy" + s, handlerArray.toBlock().func( ["self".toArg(emContext.stateClassCT), "trigger".toArg(emContext.transitionEnumCT)]),
 				[AInline, AFinal]));
 
 			handlerArray.resize(0);
 			if (actions.exit.exists(s))
 				for (a in actions.exit[s])
-					handlerArray.push(exprCallField(a, stateNameExpr, triggerExpr));
+					handlerArray.push(exprCallField(emContext,a, stateNameExpr, triggerExpr));
 			// if (allowListeners) {
 			// 	var call = EField(macro _listeners[i], "onExit" + s).at();
 			// 	handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call($stateNameExpr, trigger)));
@@ -898,19 +902,19 @@ class ExternalSM {
 			// 	var x = macro $i{sigName}.dispatch($i{"S_" + s}, trigger, false);
 			// 	handlerArray.push(x);
 			// }
-			fields.push(makeMemberFunction("onExit" + s, handlerArray.toBlock().func( ["self".toArg(stateClassCT), "trigger".toArg( transitionEnumCT)]),
+			fields.push(makeMemberFunction("onExit" + s, handlerArray.toBlock().func( ["self".toArg(emContext.stateClassCT), "trigger".toArg( emContext.transitionEnumCT)]),
 				[AInline, AFinal]));
 			handlerArray.resize(0);
 			if (actions.entryFrom.exists(s))
 				for (a in actions.entryFrom[s])
-					handlerArray.push(isEmpty(a.transition) ? exprCallField(a.field, stateNameExpr, stateExpr,
-						false) : exprIf(exprEq(exprID("state"), exprID(getNameEnumStateName(a.transition))), exprCallField(a.field, stateNameExpr, stateExpr, false)));
+					handlerArray.push(isEmpty(a.transition) ? exprCallField(emContext,a.field, stateNameExpr, stateExpr,
+						false) : exprIf(exprEq(exprID("state"), exprID(emContext.getCleanEnumName(a.transition))), exprCallField(emContext,a.field, stateNameExpr, stateExpr, false)));
 			// if (allowListeners) {
 			// 	var call = EField(macro _listeners[i], "onEnterFrom" + s).at();
 			// 	handlerArray.push(exprFor(macro i, macro _listeners.length, macro $call($stateNameExpr, state)));
 			// }
 
-			fields.push(makeMemberFunction("onEnterFrom" + s, handlerArray.toBlock().func(["self".toArg(stateClassCT), "state".toArg( stateEnumCT)]),
+			fields.push(makeMemberFunction("onEnterFrom" + s, handlerArray.toBlock().func(["self".toArg(emContext.stateClassCT), "state".toArg( emContext.stateEnumCT)]),
 				[AInline, AFinal]));
 		}
 		return fields;
@@ -956,12 +960,7 @@ class ExternalSM {
 		return node;
 	}
 
-	static function getNameEnumStateName(name:String) {
-		return /*"S_" + */ name.toUpperCase();
-	}
-	static function getNameEnumTransitionName(name:String) {
-		return /*"T_" +*/ name.toUpperCase();
-	}
+
 
 	static function getDefaultState(graph:NodeGraph) {
 		var defaultState = graph.nodes.find((x) -> x.properties.exists("default") || x.properties.exists("root") && x.getParent() == null);
@@ -979,8 +978,8 @@ class ExternalSM {
 		return lastLeafState;
 	}
 
-	static function getDefaultStateName(graph:NodeGraph) {
-		return getNameEnumStateName(getDefaultState(graph).name);
+	static function getDefaultStateName(emContext : ExternalSMContext,graph:NodeGraph) {
+		return emContext.getCleanEnumName(getDefaultState(graph).name);
 	}
 
 	static function buildConstructor( model:NodeGraph) {
@@ -995,8 +994,8 @@ class ExternalSM {
 		return func;
 	}
 
-	static function buildInitFunction( actions:ActionMaps, graph:NodeGraph, ticking:Bool, timers:Array<String>) {
-		var xx = exprID(getDefaultStateName(graph));
+	static function buildInitFunction( emContext : ExternalSMContext,  stateClassStr : String, actions:ActionMaps, graph:NodeGraph, ticking:Bool, timers:Array<String>) {
+		var xx = exprID(getDefaultStateName(emContext, graph));
 
 		var blockList = new Array<Expr>();
 		// manual initialization due to weird network hxbit behaviour
@@ -1007,9 +1006,9 @@ class ExternalSM {
 		var curState = getDefaultState(graph).root();
 		while (curState != null) {
 			if (actions.entry.exists(curState.name)) {
-				var stateNameExpr = exprID(getNameEnumStateName(curState.name));
+				var stateNameExpr = exprID(emContext.getCleanEnumName(curState.name));
 				for (a in actions.entry[curState.name])
-					blockList.push(exprCallField(a, stateNameExpr));
+					blockList.push(exprCallField(emContext, a, stateNameExpr));
 			}
 
 			if (curState.hasChildren()) {
@@ -1019,19 +1018,20 @@ class ExternalSM {
 			}
 		}
 
-		if (ticking) {
-			for (t in timers) {
-				blockList.push(macro $i{t} = time);
-			}
-			blockList.push(macro __state_now = time);
-		}
+		// if (ticking) {
+		// 	for (t in timers) {
+		// 		blockList.push(macro $i{t} = time);
+		// 	}
+		// 	blockList.push(macro __state_now = time);
+		// }
 
-		var ff = EBlock(blockList).at().func(ticking ? ["time".toArg(macro :Float)] : [], false);
+		// var ff = EBlock(blockList).at().func(ticking ? ["time".toArg(macro :Float)] : [], false);
+		var ff = EBlock(blockList).at().func(ticking ? [] : [], false);
 		return makeMemberFunction("__state_init", ff, [AFinal]);
 	}
 
-	static function buildResetFunction( actions:ActionMaps, model:NodeGraph, ticking:Bool, timers:Array<String>) {
-		var defStateName = getDefaultStateName(model);
+	static function buildResetFunction( emContext : ExternalSMContext, actions:ActionMaps, model:NodeGraph, ticking:Bool, timers:Array<String>) {
+		var defStateName = getDefaultStateName(emContext, model);
 		var xx = exprID(defStateName);
 
 		var blockList = new Array<Expr>();
@@ -1043,14 +1043,14 @@ class ExternalSM {
 		if (actions.entry.exists(defStateName)) {
 			var stateNameExpr = exprID(defStateName);
 			for (a in actions.entry[defStateName])
-				blockList.push(exprCallField(a, stateNameExpr));
+				blockList.push(exprCallField(emContext,a, stateNameExpr));
 		}
 
 		if (ticking) {
-			for (t in timers) {
-				blockList.push(macro $i{t} = time);
-			}
-			blockList.push(macro __state_now = time);
+			// for (t in timers) {
+			// 	blockList.push(macro $i{t} = time);
+			// }
+			blockList.push(macro __state_now = 0.0);
 		}
 		var ff = EBlock(blockList).at().func(ticking ? ["time".toArg(macro :Float)] : [], false);
 		return makeMemberFunction("__state_reset", ff, [AFinal]);
@@ -1059,18 +1059,9 @@ class ExternalSM {
 		//		con.publish();
 	}
 
-	static function buildTickFunction( model:NodeGraph, actions:ActionMaps) {
+	static function buildTickFunction( emContext : ExternalSMContext, model:NodeGraph, actions:ActionMaps) {
 		var whiles = actions.whiles;
 		var caseList = new Array<Case>();
-
-		var stateEnumName = getStateEnumName();
-		var stateEnumCT = stateEnumName.asComplexType();
-
-		var transitionEnumName = getTransitionEnumName();
-		var transitionEnumCT = transitionEnumName.asComplexType();
-
-		var stateClassStr = externalStateClassName();
-		var stateClassCT = stateClassStr.asComplexType();
 
 		for (sn in model.nodes) {
 			if (sn.hasChildren())
@@ -1107,7 +1098,7 @@ class ExternalSM {
 			}
 
 			if (blockList.length > 0) {
-				var ecase:Case = {values: [exprID(getNameEnumStateName(sn.name))], expr: macro $b{blockList}};
+				var ecase:Case = {values: [exprID(emContext.getCleanEnumName(sn.name))], expr: macro $b{blockList}};
 				caseList.push(ecase);
 			}
 		}
@@ -1116,8 +1107,8 @@ class ExternalSM {
 			macro self.lastUpdateTime = nowTime,
 			ESwitch(makeMemberAccessExpr("self", "state"), caseList, macro {}).at()
 		]).at();
-		var ff = swblock.func(["self".toArg(stateClassCT), "delta".toArg(macro :Float), "time".toArg(macro :Float)], false);
-		return makeMemberFunction("tick", ff, [AFinal]);
+		var ff = swblock.func(["self".toArg(emContext.stateClassCT), "delta".toArg(macro :Float), "time".toArg(macro :Float)], false);
+		return makeMemberFunction("tick", ff, [AFinal, APublic]);
 	}
 
 	// Generates Functions:
@@ -1152,48 +1143,56 @@ class ExternalSM {
 		return model;
 	}
 
-	static function buildEnums(model:NodeGraph) {
-		buildStateEnum(model);
-		buildTransitionEnum(model);
+	static function defineEnums(emContext : ExternalSMContext, model:NodeGraph) {
+		defineStateEnum(emContext, model);
+		defineTransitionEnum(emContext, model);
 	}
-	// macro static public function buildState(path:String, machine:String):Array<Field> {
-	// 	var fields = Context.getBuildFields();
+	macro static public function buildState(path:String, machine:String):Array<Field> {
+		var model = loadModel(path, machine);
+		var emContext = new ExternalSMContext(model, Context.getLocalClass().get().name);
 
-	// 	var model = loadModel(path, machine);
-	// 	fields = fields.concat(buildExternalStateClass(model));
+		var cm = Context.getLocalClass().get().meta.get().toMap();
+		var debug = cm.exists(":sm_debug");
+		
+		var fields = Context.getBuildFields();
 
-	// 	trace('Building state ${Context.getLocalClass().get().name}');
-	// 	for (f in fields) {
-	// 		trace(_printer.printField(f));
-	// 	}
+		defineEnums(emContext, model);
 
-	// 	return fields;
-	// }
+		fields = fields.concat(buildExternalStateClass(emContext, model));
+
+		if (cm.exists(":sm_print")) {
+			trace('Building state ${Context.getLocalClass().get().name}');
+			for (f in fields) {
+				trace(_printer.printField(f));
+			}
+		}
+
+
+		return fields;
+	}
 
 	static function makeMemberAccessExpr( varName:String, memberName:String) : Expr {
 		return EField(EConst(CIdent(varName)).at(), memberName).at();
 
 	}
-	macro static public function buildMachine( path:String, machine:String):Array<Field> {
-		// trace("Building state machine " + Context.getLocalClass().get().name);
+	macro static public function buildMachine( stateClassStr:String, path:String, machine:String):Array<Field> {
+		trace("Building state machine " + Context.getLocalClass().get().name);
 		var model = loadModel(path, machine);
 
-		buildEnums(model);
-		buildExternalStateClass(model);
+		var emContext = new ExternalSMContext(model, stateClassStr);
 
-		var stateClassStr = externalStateClassName();
-		var stateClassCT = stateClassStr.asComplexType();
+//		defineEnums(model);
+//		defineExternalStateClass(model);
 		
-
 		var cm = Context.getLocalClass().get().meta.get().toMap();
 		var debug = cm.exists(":sm_debug");
 		var ticking = cm.exists(":sm_tick");
 
-		var actions = getActions();
+		var actions = getActions(emContext);
 		var fields = Context.getBuildFields();
-		fields.push(buildProcessFunction( stateClassCT, model));
+		fields.push(buildProcessFunction( emContext, model));
 		fields.push(buildConstructor(model));
-		var eventFunctions  : Array<Field> = buildEventFunctions( actions, model, ticking);
+		var eventFunctions  : Array<Field> = buildEventFunctions( emContext, actions, model, ticking);
 
 		fields = fields.concat(eventFunctions);
 
@@ -1216,7 +1215,7 @@ class ExternalSM {
 		});
 
 		if (ticking) {
-			fields.push(buildTickFunction( model, actions));
+			fields.push(buildTickFunction( emContext, model, actions));
 		}
 
 		//fields.push(buildIsInFunction( model));
