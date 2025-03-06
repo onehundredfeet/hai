@@ -187,15 +187,116 @@ class ExternalSM {
 
 	static var _printer = new haxe.macro.Printer();
 
+	/*
+	static public function build(parseDefault:String = null):Array<Field> {
+        var localClass = Context.getLocalClass();
+        var fields = Context.getBuildFields();
+        var valuesNames = [];
+        var name = localClass.get().name.replace("_Impl_", "");
+
+		for (f in fields) {
+			switch (f.kind) {
+				case FVar(ct, e):
+                    valuesNames.push(f.name);
+				default:
+			}
+		}
+        var unknownStr = EConst(CString('Invalid ${name}(')).at();
+        var unknownExpr = macro $unknownStr + Std.string(this) + ")";
+
+        var toStringSwitchExpr = ESwitch(EConst(CIdent("thisAsEnum")).at(), [
+			for (v in valuesNames) {
+				var c : Case =
+				{
+					values: [EConst(CIdent(v)).at()],
+					expr: EConst(CString(v)).at()
+				};
+				c;
+			}
+		], unknownExpr).at();
+
+        var enumType = TPath({
+			name: name,
+			pack: [],
+		});
+
+		var toString = {
+			pos: Context.currentPos(),
+			name: "toString",
+			kind: FFun({args: [], ret: macro :String, expr: macro {var thisAsEnum : $enumType = cast this; return $toStringSwitchExpr;}}),
+			meta: [],
+			access: [APublic],
+		};
+
+        var unknownParseExpr = parseDefault != null ? EConst(CIdent(parseDefault)).at() : macro throw $unknownStr + s + ')';
+
+        var parseSwitchExpr = ESwitch(EConst(CIdent("s")).at(), [
+			for (v in valuesNames) {
+				var c : Case =
+				{
+					values: [EConst(CString(v)).at()],
+					expr: EConst(CIdent(v)).at()
+				};
+				c;
+			}
+		], unknownParseExpr).at();
+
+        var fromString = {
+            pos: Context.currentPos(),
+            name: "fromString",
+            kind: FFun({args: [{name: "s", type: macro :String}], ret: macro :$enumType, expr: macro return $parseSwitchExpr}),
+            meta: [],
+            access: [APublic, AStatic],
+        };
+
+        var printer = new haxe.macro.Printer();
+        trace(printer.printField(fromString));
+
+		return Context.getBuildFields().concat([toString, fromString]);
+	}
+	*/
 
 	static function defineStateEnum( emContext : ExternalSMContext ,model:NodeGraph) {
 		var fields = [];
+		var valuesNames = [];
 
 		var count = 0;
 		for (ss in model.nodes) {
-			fields.push(makeVarInt(emContext.getCleanEnumName(ss.name), count++));
+			var name = emContext.getCleanEnumName(ss.name);
+			valuesNames.push(name);
+			fields.push(makeVarInt(name, count++));
 		}
 
+		//
+        var unknownStr = EConst(CString('Invalid ${emContext.stateEnumName}(')).at();
+        var unknownExpr = macro $unknownStr + Std.string(this) + ")";
+
+        var toStringSwitchExpr = ESwitch(EConst(CIdent("thisAsEnum")).at(), [
+			for (v in valuesNames) {
+				var c : Case =
+				{
+					values: [EConst(CIdent(v)).at()],
+					expr: EConst(CString(v)).at()
+				};
+				c;
+			}
+		], unknownExpr).at();
+
+        var enumType = TPath({
+			name: emContext.stateEnumName,
+			pack: [],
+		});
+
+		var toString : Field = {
+			pos: Context.currentPos(),
+			name: "toString",
+			kind: FFun({args: [], ret: macro :String, expr: macro {var thisAsEnum : $enumType = cast this; return $toStringSwitchExpr;}}),
+			meta: [],
+			access: [APublic],
+		};
+
+
+		fields.push(toString);
 		var def = {
 			pack: Context.getLocalClass().get().pack,
 			name: emContext.stateEnumName,
@@ -204,7 +305,7 @@ class ExternalSM {
 			fields: fields
 		};
 
-//		trace(_printer.printTypeDefinition(def));
+		//trace(_printer.printTypeDefinition(def));
 
 		Context.defineType(def);
 	}
@@ -1104,7 +1205,10 @@ class ExternalSM {
 		}
 
 		var swblock = EBlock([
+			macro nowTime = time,
+			macro deltaTime = delta,
 			macro self.lastUpdateTime = nowTime,
+//			macro trace('Tick ${nowTime} - ${self.lastTransitionTime} = ${nowTime - self.lastTransitionTime}'),
 			ESwitch(makeMemberAccessExpr("self", "state"), caseList, macro {}).at()
 		]).at();
 		var ff = swblock.func(["self".toArg(emContext.stateClassCT), "delta".toArg(macro :Float), "time".toArg(macro :Float)], false);
@@ -1241,7 +1345,7 @@ class ExternalSM {
 
 		#end
 
-		if (cm.exists(":sm_print")) {
+		if (true || cm.exists(":sm_print")) {
 			for (m in fields) {
 				trace(_printer.printField(m));
 			}
