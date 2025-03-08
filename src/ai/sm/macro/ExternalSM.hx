@@ -665,7 +665,6 @@ class ExternalSM {
 		var stateCases = new Array<Case>();
 
 		var max = graph.nodes.length;
-		max = 1;
 		for (i in 0...max) {
 			var currentNode = graph.nodes[i];
 			if (!isValidLeafNode(currentNode))
@@ -673,10 +672,10 @@ class ExternalSM {
 			var triggers = new Map<String, Bool>();
 			var triggerCases = new Array<Case>();
 
-			//trace('Walking all triggers here and up ${currentNode.name}');
+			trace('Walking all triggers here and up ${currentNode.name}');
 			var s = currentNode;
 			while (s != null) {
-				//trace('\tWalking node ${currentNode.name} : ${s.name}');
+				trace('\tWalking node ${currentNode.name} : ${s.name}');
 				var parent = s.parent;
 				s.walkOutgoingEdgesNonChildren((trigger) -> {
 					var targetState = trigger.target;
@@ -741,7 +740,7 @@ class ExternalSM {
 					}
 
 					blockArray.push(exprCall("onEnterBy" + leafStateName, [exprID("self"), emContext.getFullTransitionNameExpr(trigger.name)]));
-					var tc:Case = {values: [makeMemberAccessExpr(emContext.transitionEnumName, trigger.name)], expr: blockArray.toBlock()};
+					var tc:Case = {values: [emContext.getFullTransitionNameExpr(trigger.name)], expr: blockArray.toBlock()};
 					triggerCases.push(tc);
 				});
 				s = parent;
@@ -749,7 +748,7 @@ class ExternalSM {
 
 			var triggerSwitch = ESwitch(EConst(CIdent("trigger")).at(), triggerCases, EBlock([]).at()).at();
 
-			triggerSwitch = null;
+//			triggerSwitch = null;
 			var stateCasec:Case = {values: [emContext.getFullStateNameExpr(currentNode.name)], expr: triggerSwitch};
 			stateCases.push(stateCasec);
 		}
